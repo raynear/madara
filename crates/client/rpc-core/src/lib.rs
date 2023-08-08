@@ -154,7 +154,7 @@ pub trait StarknetRpcApi {
     ) -> RpcResult<EncryptedInvokeTransaction>;
 
     #[method(name = "decryptEncryptedInvokeTransaction")]
-    fn decrypt_encrypted_invoke_transaction(
+    async fn decrypt_encrypted_invoke_transaction(
         &self,
         encrypted_invoke_transaction: EncryptedInvokeTransaction,
     ) -> RpcResult<InvokeTransaction>;
@@ -163,6 +163,6 @@ pub trait StarknetRpcApi {
     #[method(name = "addEncryptedInvokeTransaction")]
     async fn add_encrypted_invoke_transaction(
         &self,
-        invoke_transaction: BroadcastedInvokeTransaction,
+        encrypted_invoke_transaction: EncryptedInvokeTransaction,
     ) -> RpcResult<String>;
 }

@@ -995,40 +995,26 @@ where
         &self,
         invoke_transaction: BroadcastedInvokeTransaction,
     ) -> RpcResult<EncryptedInvokeTransaction> {
+        let encryptor = SequencerPoseidonEncryption::new();
+        let symmetric_key = SequencerPoseidonEncryption::calculate_secret_key("123".as_bytes());
+
         let invoke_tx = InvokeTransaction::try_from(invoke_transaction).map_err(|e| {
             error!("{e}");
             StarknetRpcApiError::InternalServerError
         })?;
         let invoke_tx: String = serde_json::to_string(&invoke_tx)?;
 
-        println!("invoke_tx - {:?}", &invoke_tx);
-
-        let encryptor = SequencerPoseidonEncryption::new();
-        let symmetric_key = SequencerPoseidonEncryption::calculate_secret_key("123".as_bytes());
         let (encrypted_data, nonce, _, _) = encryptor.encrypt(invoke_tx, symmetric_key);
-
         let nonce = format!("{:x}", nonce);
-
-        // let plain_text = hex::decode(plain_text).unwrap();
-        // let plain_text = String::from_utf8(plain_text).unwrap();
-        // let plain_text = plain_text.as_str();
-        // println!("plain_text - {:?}", plain_text);
-        // let test = Felt252Wrapper(FieldElement::from_mont([32, 0, 0, 544]));
-        // println!("test: {:?}", test);
-        // let result = Felt252Wrapper(test);
-        // println!("result: {:?}", a);
-        // println!("result: {:?}", result);
-        // println!("cipher_text_hexes - {:?}", cipher_text_hexes);
 
         Ok(EncryptedInvokeTransaction { encrypted_data, nonce })
     }
 
-    fn decrypt_encrypted_invoke_transaction(
+    async fn decrypt_encrypted_invoke_transaction(
         &self,
         encrypted_invoke_transaction: EncryptedInvokeTransaction,
     ) -> RpcResult<InvokeTransaction> {
         let encryptor = SequencerPoseidonEncryption::new();
-
         let symmetric_key = SequencerPoseidonEncryption::calculate_secret_key("123".as_bytes());
 
         let decrypted_invoke_tx = encryptor.decrypt(
@@ -1037,16 +1023,31 @@ where
             encrypted_invoke_transaction.nonce,
         );
         let decrypted_invoke_tx = String::from_utf8(decrypted_invoke_tx).unwrap();
-
         let decrypted_invoke_tx = decrypted_invoke_tx.trim_end_matches('\0');
+
         let invoke_tx: InvokeTransaction = serde_json::from_str(&decrypted_invoke_tx)?;
+
         Ok(invoke_tx)
     }
 
     async fn add_encrypted_invoke_transaction(
         &self,
-        invoke_transaction: BroadcastedInvokeTransaction,
+        encrypted_invoke_transaction: EncryptedInvokeTransaction,
     ) -> RpcResult<String> {
+        let best_block_hash = self.client.info().best_hash;
+        let invoke_tx: InvokeTransaction =
+            self.decrypt_encrypted_invoke_transaction(encrypted_invoke_transaction).await?;
+        let chain_id = Felt252Wrapper(self.chain_id()?.0);
+
+        let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
+
+        let extrinsic =
+            convert_transaction(self.client.clone(), best_block_hash, transaction.clone(), TxType::Invoke).await?;
+
+        submit_extrinsic(self.pool.clone(), best_block_hash, extrinsic).await?;
+
+        // Ok(InvokeTransactionResult { transaction_hash: transaction.hash.into() })
+
         Ok("decrypt_invoke_transaction".to_string())
     }
 }
