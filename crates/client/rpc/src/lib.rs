@@ -1023,13 +1023,24 @@ where
         Ok(EncryptedInvokeTransaction { encrypted_data, nonce })
     }
 
-    fn decrypt_invoke_transaction(&self, encrypted_invoke_transaction: String) -> RpcResult<String> {
-        // let decrypted_invoke_tx = encryptor.decrypt(cipher_text_hexes.clone(), &symmetric_key,
-        // nonce_string); let decrypted_invoke_tx = String::from_utf8(decrypted_invoke_tx).unwrap();
-        // let decrypted_invoke_tx = decrypted_invoke_tx.trim_end_matches('\0');
-        // println!("decrypted_invoke_tx: {:?}", decrypted_invoke_tx);
+    fn decrypt_encrypted_invoke_transaction(
+        &self,
+        encrypted_invoke_transaction: EncryptedInvokeTransaction,
+    ) -> RpcResult<InvokeTransaction> {
+        let encryptor = SequencerPoseidonEncryption::new();
 
-        Ok("decrypt_invoke_transaction".to_string())
+        let symmetric_key = SequencerPoseidonEncryption::calculate_secret_key("123".as_bytes());
+
+        let decrypted_invoke_tx = encryptor.decrypt(
+            encrypted_invoke_transaction.encrypted_data.clone(),
+            &symmetric_key,
+            encrypted_invoke_transaction.nonce,
+        );
+        let decrypted_invoke_tx = String::from_utf8(decrypted_invoke_tx).unwrap();
+
+        let decrypted_invoke_tx = decrypted_invoke_tx.trim_end_matches('\0');
+        let invoke_tx: InvokeTransaction = serde_json::from_str(&decrypted_invoke_tx)?;
+        Ok(invoke_tx)
     }
 
     async fn add_encrypted_invoke_transaction(

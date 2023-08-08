@@ -9,7 +9,7 @@ mod tests;
 
 use jsonrpsee::core::RpcResult;
 use jsonrpsee::proc_macros::rpc;
-use mp_starknet::transaction::types::EncryptedInvokeTransaction;
+use mp_starknet::transaction::types::{EncryptedInvokeTransaction, InvokeTransaction};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
@@ -153,8 +153,11 @@ pub trait StarknetRpcApi {
         invoke_transaction: BroadcastedInvokeTransaction,
     ) -> RpcResult<EncryptedInvokeTransaction>;
 
-    #[method(name = "decryptInvokeTransaction")]
-    fn decrypt_invoke_transaction(&self, encrypted_invoke_transaction: String) -> RpcResult<String>;
+    #[method(name = "decryptEncryptedInvokeTransaction")]
+    fn decrypt_encrypted_invoke_transaction(
+        &self,
+        encrypted_invoke_transaction: EncryptedInvokeTransaction,
+    ) -> RpcResult<InvokeTransaction>;
 
     /// Add an Encrypted Invoke Transaction to invoke a contract function
     #[method(name = "addEncryptedInvokeTransaction")]
