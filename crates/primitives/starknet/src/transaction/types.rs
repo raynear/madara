@@ -330,6 +330,16 @@ impl TryFrom<Transaction> for DeclareTransaction {
     }
 }
 
+/// Encrypted Invoke transaction.
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct EncryptedInvokeTransaction {
+    /// Encrypted transaction data.
+    pub encrypted_data: Vec<String>,
+
+    /// Nonce for decrypting the encrypted transaction.
+    pub nonce: String,
+}
+
 /// Invoke transaction.
 #[derive(
     Clone,
