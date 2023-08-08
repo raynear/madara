@@ -12,7 +12,7 @@ use futures::channel::mpsc;
 use jsonrpsee::RpcModule;
 use madara_runtime::opaque::Block;
 use madara_runtime::{AccountId, Hash, Index};
-use mc_transaction_pool::{ChainApi, Pool};
+use mc_transaction_pool::{ChainApi, EncryptedPool, Pool};
 use pallet_starknet::runtime_api::StarknetRuntimeApi;
 use sc_client_api::{Backend, StorageProvider};
 use sc_consensus_manual_seal::rpc::EngineCommand;
@@ -29,6 +29,8 @@ pub struct FullDeps<A: ChainApi, C, P> {
     pub client: Arc<C>,
     /// Transaction pool instance.
     pub pool: Arc<P>,
+    /// Transaction pool instance.
+    pub epool: EncryptedPool,
     /// Extrinsic pool graph instance.
     pub graph: Arc<Pool<A>>,
     /// Whether to deny unsafe calls
@@ -60,7 +62,7 @@ where
     use substrate_frame_rpc_system::{System, SystemApiServer};
 
     let mut module = RpcModule::new(());
-    let FullDeps { client, pool, deny_unsafe, starknet: starknet_params, command_sink, graph } = deps;
+    let FullDeps { client, pool, epool, deny_unsafe, starknet: starknet_params, command_sink, graph } = deps;
 
     let hasher = client.runtime_api().get_hasher(client.info().best_hash)?.into();
 
@@ -71,6 +73,7 @@ where
             starknet_params.madara_backend,
             starknet_params.overrides,
             pool,
+            epool,
             graph,
             starknet_params.sync_service,
             starknet_params.starting_block,

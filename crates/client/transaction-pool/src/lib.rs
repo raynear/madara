@@ -68,6 +68,25 @@ type PolledIterator<PoolApi> = Pin<Box<dyn Future<Output = ReadyIteratorFor<Pool
 /// A transaction pool for a full node.
 pub type FullPool<Block, Client> = BasicPool<FullChainApi<Client, Block>, Block>;
 
+#[derive(Debug, Clone)]
+struct EncryptedTx {
+    encrypted_tx: String,
+}
+
+/// epool
+#[derive(Debug, Clone)]
+pub struct EncryptedPool {
+    encrypted_tx_pool: Vec<EncryptedTx>,
+}
+
+impl EncryptedPool {
+    /// push encrypted tx to encrypted pool
+    pub fn push(&mut self, tx_bundle: String) {
+        println!("{}", tx_bundle);
+        self.encrypted_tx_pool.push(EncryptedTx { encrypted_tx: tx_bundle });
+    }
+}
+
 /// Basic implementation of transaction pool that can be customized by providing PoolApi.
 pub struct BasicPool<PoolApi, Block>
 where
@@ -75,6 +94,7 @@ where
     PoolApi: graph::ChainApi<Block = Block>,
 {
     pool: Arc<graph::Pool<PoolApi>>,
+    epool: Arc<EncryptedPool>,
     api: Arc<PoolApi>,
     revalidation_strategy: Arc<Mutex<RevalidationStrategy<NumberFor<Block>>>>,
     revalidation_queue: Arc<revalidation::RevalidationQueue<PoolApi>>,
@@ -154,12 +174,14 @@ where
         finalized_hash: Block::Hash,
     ) -> (Self, Pin<Box<dyn Future<Output = ()> + Send>>) {
         let pool = Arc::new(graph::Pool::new(Default::default(), true.into(), pool_api.clone()));
+        let epool = Arc::new(EncryptedPool { encrypted_tx_pool: vec![] });
         let (revalidation_queue, background_task) =
             revalidation::RevalidationQueue::new_background(pool_api.clone(), pool.clone());
         (
             Self {
                 api: pool_api,
                 pool,
+                epool,
                 revalidation_queue: Arc::new(revalidation_queue),
                 revalidation_strategy: Arc::new(Mutex::new(RevalidationStrategy::Always)),
                 ready_poll: Default::default(),
@@ -185,6 +207,7 @@ where
         finalized_hash: Block::Hash,
     ) -> Self {
         let pool = Arc::new(graph::Pool::new(options, is_validator, pool_api.clone()));
+        let epool = Arc::new(EncryptedPool { encrypted_tx_pool: vec![] });
         let (revalidation_queue, background_task) = match revalidation_type {
             RevalidationType::Light => (revalidation::RevalidationQueue::new(pool_api.clone(), pool.clone()), None),
             RevalidationType::Full => {
@@ -201,6 +224,7 @@ where
         Self {
             api: pool_api,
             pool,
+            epool,
             revalidation_queue: Arc::new(revalidation_queue),
             revalidation_strategy: Arc::new(Mutex::new(match revalidation_type {
                 RevalidationType::Light => RevalidationStrategy::Light(RevalidationStatus::NotScheduled),
@@ -215,6 +239,11 @@ where
     /// Gets shared reference to the underlying pool.
     pub fn pool(&self) -> &Arc<graph::Pool<PoolApi>> {
         &self.pool
+    }
+
+    /// Gets shared reference to the underlying pool.
+    pub fn epool(&self) -> &EncryptedPool {
+        &self.epool
     }
 
     /// Get access to the underlying api
