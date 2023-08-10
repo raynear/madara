@@ -483,16 +483,13 @@ where
         let extrinsic =
             convert_transaction(self.client.clone(), best_block_hash, transaction.clone(), TxType::Invoke).await?;
 
-        // let epool = self.pool.epool().clone();
-        // let epool = self.pool.epool().clone();
-        // let epool = self.pool.clone().epool();
         let epool = self.epool.clone();
 
+        // set
         epool.lock().push("test");
 
-        // self.epool.clone().push("test");
-        println!("{}", epool.lock().len());
-        // println!("{:#?}", self.epool.clone().get(0));
+        // get
+        println!("{:?}", epool.lock().get(0));
 
         submit_extrinsic(self.pool.clone(), best_block_hash, extrinsic).await?;
 

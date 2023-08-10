@@ -99,8 +99,8 @@ impl EncryptedPool {
     }
 
     /// get item
-    pub fn get(&self, index: usize) -> EncryptedTx {
-        self.encrypted_tx_pool[index]
+    pub fn get(&self, index: usize) -> std::option::Option<&EncryptedTx> {
+        self.encrypted_tx_pool.get(index)
     }
 
     /// get length
