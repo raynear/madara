@@ -14,6 +14,7 @@ use madara_runtime::opaque::Block;
 use madara_runtime::{AccountId, Hash, Index};
 use mc_transaction_pool::{ChainApi, EncryptedPool, Pool};
 use pallet_starknet::runtime_api::StarknetRuntimeApi;
+use parking_lot::Mutex;
 use sc_client_api::{Backend, StorageProvider};
 use sc_consensus_manual_seal::rpc::EngineCommand;
 pub use sc_rpc_api::DenyUnsafe;
@@ -30,7 +31,7 @@ pub struct FullDeps<A: ChainApi, C, P> {
     /// Transaction pool instance.
     pub pool: Arc<P>,
     /// Transaction pool instance.
-    pub epool: EncryptedPool,
+    pub epool: Arc<Mutex<EncryptedPool>>,
     /// Extrinsic pool graph instance.
     pub graph: Arc<Pool<A>>,
     /// Whether to deny unsafe calls
