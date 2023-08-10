@@ -54,6 +54,10 @@ log = { workspace = true, default-features = true }
 serde_json = { workspace = true, default-features = true }
 thiserror = { workspace = true }
 encryptor = { workspace = true }
+vdf = { workspace = true }
+starknet-crypto = { workspace = true, default-features = false, features = [
+  "alloc",
+] }
 
 [dev-dependencies]
 rstest = { workspace = true }

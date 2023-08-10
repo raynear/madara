@@ -26,8 +26,9 @@ use starknet_core::types::{
     InvokeTransactionResult, MaybePendingBlockWithTxHashes, MaybePendingBlockWithTxs, MaybePendingTransactionReceipt,
     StateUpdate, SyncStatusType, Transaction,
 };
+use types::{EncryptedInvokeTransactionResult, EncryptedMempoolTransactionResult};
 
-use crate::types::{RpcGetProofInput, RpcGetProofOutput};
+use crate::types::{DecryptionInfo, ProvideDecryptionKeyResult, RpcGetProofInput, RpcGetProofOutput};
 
 #[serde_as]
 #[derive(Serialize, Deserialize)]
@@ -151,12 +152,13 @@ pub trait StarknetRpcApi {
     fn encrypt_invoke_transaction(
         &self,
         invoke_transaction: BroadcastedInvokeTransaction,
-    ) -> RpcResult<EncryptedInvokeTransaction>;
+    ) -> RpcResult<EncryptedInvokeTransactionResult>;
 
     #[method(name = "decryptEncryptedInvokeTransaction")]
     async fn decrypt_encrypted_invoke_transaction(
         &self,
         encrypted_invoke_transaction: EncryptedInvokeTransaction,
+        decryption_key: Option<String>,
     ) -> RpcResult<InvokeTransaction>;
 
     /// Add an Encrypted Invoke Transaction to invoke a contract function
@@ -164,5 +166,9 @@ pub trait StarknetRpcApi {
     async fn add_encrypted_invoke_transaction(
         &self,
         encrypted_invoke_transaction: EncryptedInvokeTransaction,
-    ) -> RpcResult<String>;
+    ) -> RpcResult<EncryptedMempoolTransactionResult>;
+
+    ///
+    #[method(name = "provideDecryptionKey")]
+    async fn provide_decryption_key(&self, decryption_info: DecryptionInfo) -> RpcResult<ProvideDecryptionKeyResult>;
 }

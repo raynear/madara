@@ -176,3 +176,6 @@ async-trait = "0.1.72"
 indexmap = { git = "https://github.com/bluss/indexmap", rev = "ca5f848e10c31e80aeaad0720d14aa2f6dd6cfb1", default-features = false }
 num-traits = "0.2.16"
 encryptor = { git = "https://github.com/radiusxyz/encryptor" }
+vdf = { git = "https://github.com/radiusxyz/vdf" }
+
+

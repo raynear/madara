@@ -338,6 +338,12 @@ pub struct EncryptedInvokeTransaction {
 
     /// Nonce for decrypting the encrypted transaction.
     pub nonce: String,
+
+    pub t: u64,
+
+    pub g: String,
+
+    pub n: String,
 }
 
 /// Invoke transaction.
