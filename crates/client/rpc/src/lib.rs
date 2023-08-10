@@ -20,7 +20,7 @@ pub use mc_rpc_core::utils::*;
 use mc_rpc_core::Felt;
 pub use mc_rpc_core::StarknetRpcApiServer;
 use mc_storage::OverrideHandle;
-use mc_transaction_pool::{ChainApi, Pool};
+use mc_transaction_pool::{ChainApi, EncryptedPool, Pool};
 use mp_starknet::crypto::merkle_patricia_tree::merkle_tree::ProofNode;
 use mp_starknet::execution::types::Felt252Wrapper;
 use mp_starknet::traits::hash::HasherT;
@@ -30,6 +30,7 @@ use mp_starknet::transaction::types::{
     Transaction as MPTransaction, TxType,
 };
 use pallet_starknet::runtime_api::{ConvertTransactionRuntimeApi, StarknetRuntimeApi};
+use parking_lot::Mutex;
 use sc_client_api::backend::{Backend, StorageProvider};
 use sc_network_sync::SyncingService;
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TransactionSource};
@@ -58,6 +59,7 @@ pub struct Starknet<A: ChainApi, B: BlockT, BE, C, P, H> {
     backend: Arc<mc_db::Backend<B>>,
     overrides: Arc<OverrideHandle<B>>,
     pool: Arc<P>,
+    epool: Arc<Mutex<EncryptedPool>>,
     graph: Arc<Pool<A>>,
     sync_service: Arc<SyncingService<B>>,
     starting_block: <<B>::Header as HeaderT>::Number,
@@ -83,12 +85,24 @@ impl<A: ChainApi, B: BlockT, BE, C, P, H> Starknet<A, B, BE, C, P, H> {
         backend: Arc<mc_db::Backend<B>>,
         overrides: Arc<OverrideHandle<B>>,
         pool: Arc<P>,
+        epool: Arc<Mutex<EncryptedPool>>,
         graph: Arc<Pool<A>>,
         sync_service: Arc<SyncingService<B>>,
         starting_block: <<B>::Header as HeaderT>::Number,
         hasher: Arc<H>,
     ) -> Self {
-        Self { client, backend, overrides, pool, graph, sync_service, starting_block, hasher, _marker: PhantomData }
+        Self {
+            client,
+            backend,
+            overrides,
+            pool,
+            epool,
+            graph,
+            sync_service,
+            starting_block,
+            hasher,
+            _marker: PhantomData,
+        }
     }
 }
 
@@ -469,6 +483,14 @@ where
 
         let extrinsic =
             convert_transaction(self.client.clone(), best_block_hash, transaction.clone(), TxType::Invoke).await?;
+
+        let epool = self.epool.clone();
+
+        // set
+        epool.lock().push("test");
+
+        // get
+        println!("{:?}", epool.lock().get(0));
 
         submit_extrinsic(self.pool.clone(), best_block_hash, extrinsic).await?;
 
@@ -1051,6 +1073,10 @@ where
         Ok("decrypt_invoke_transaction".to_string())
     }
 }
+
+// fn epool_push(mut epool: Arc<EncryptedPool>, a: &'static str) {
+//     epool.push(a)
+// }
 
 async fn submit_extrinsic<P, B>(
     pool: Arc<P>,
