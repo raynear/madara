@@ -68,6 +68,47 @@ type PolledIterator<PoolApi> = Pin<Box<dyn Future<Output = ReadyIteratorFor<Pool
 /// A transaction pool for a full node.
 pub type FullPool<Block, Client> = BasicPool<FullChainApi<Client, Block>, Block>;
 
+/// encrypted tx type
+#[derive(Debug, Copy, Clone)]
+pub struct EncryptedTx {
+    encrypted_tx: &'static str,
+}
+
+/// epool
+#[derive(Debug, Clone)]
+pub struct EncryptedPool {
+    encrypted_tx_pool: Vec<EncryptedTx>,
+}
+
+impl Default for EncryptedPool {
+    fn default() -> Self {
+        Self { encrypted_tx_pool: Default::default() }
+    }
+}
+
+impl EncryptedPool {
+    /// new epool
+    pub fn new() -> Self {
+        Self { encrypted_tx_pool: Default::default() }
+    }
+
+    /// push encrypted tx to encrypted pool
+    pub fn push(&mut self, tx_bundle: &'static str) {
+        println!("{}", tx_bundle);
+        self.encrypted_tx_pool.push(EncryptedTx { encrypted_tx: tx_bundle });
+    }
+
+    /// get item
+    pub fn get(&self, index: usize) -> std::option::Option<&EncryptedTx> {
+        self.encrypted_tx_pool.get(index)
+    }
+
+    /// get length
+    pub fn len(&self) -> usize {
+        self.encrypted_tx_pool.len()
+    }
+}
+
 /// Basic implementation of transaction pool that can be customized by providing PoolApi.
 pub struct BasicPool<PoolApi, Block>
 where
@@ -75,6 +116,7 @@ where
     PoolApi: graph::ChainApi<Block = Block>,
 {
     pool: Arc<graph::Pool<PoolApi>>,
+    epool: Arc<Mutex<EncryptedPool>>,
     api: Arc<PoolApi>,
     revalidation_strategy: Arc<Mutex<RevalidationStrategy<NumberFor<Block>>>>,
     revalidation_queue: Arc<revalidation::RevalidationQueue<PoolApi>>,
@@ -142,6 +184,22 @@ pub enum RevalidationType {
     Full,
 }
 
+// /// trait for epool
+// pub trait EncryptedMemPool {
+//     /// Gets shared reference to the underlying pool.
+//     fn epool(&self) -> &Arc<Mutex<EncryptedPool>>;
+// }
+
+// impl<PoolApi, Block> EncryptedMemPool for BasicPool<PoolApi, Block>
+// where
+//     Block: BlockT,
+//     PoolApi: 'static + graph::ChainApi<Block = Block>,
+// {
+//     fn epool(&self) -> &Arc<Mutex<EncryptedPool>> {
+//         &(self.epool)
+//     }
+// }
+
 impl<PoolApi, Block> BasicPool<PoolApi, Block>
 where
     Block: BlockT,
@@ -154,12 +212,14 @@ where
         finalized_hash: Block::Hash,
     ) -> (Self, Pin<Box<dyn Future<Output = ()> + Send>>) {
         let pool = Arc::new(graph::Pool::new(Default::default(), true.into(), pool_api.clone()));
+        let epool = Arc::new(Mutex::new(EncryptedPool::new()));
         let (revalidation_queue, background_task) =
             revalidation::RevalidationQueue::new_background(pool_api.clone(), pool.clone());
         (
             Self {
                 api: pool_api,
                 pool,
+                epool,
                 revalidation_queue: Arc::new(revalidation_queue),
                 revalidation_strategy: Arc::new(Mutex::new(RevalidationStrategy::Always)),
                 ready_poll: Default::default(),
@@ -185,6 +245,8 @@ where
         finalized_hash: Block::Hash,
     ) -> Self {
         let pool = Arc::new(graph::Pool::new(options, is_validator, pool_api.clone()));
+        let epool = Arc::new(Mutex::new(EncryptedPool::new()));
+
         let (revalidation_queue, background_task) = match revalidation_type {
             RevalidationType::Light => (revalidation::RevalidationQueue::new(pool_api.clone(), pool.clone()), None),
             RevalidationType::Full => {
@@ -201,6 +263,7 @@ where
         Self {
             api: pool_api,
             pool,
+            epool,
             revalidation_queue: Arc::new(revalidation_queue),
             revalidation_strategy: Arc::new(Mutex::new(match revalidation_type {
                 RevalidationType::Light => RevalidationStrategy::Light(RevalidationStatus::NotScheduled),
@@ -215,6 +278,11 @@ where
     /// Gets shared reference to the underlying pool.
     pub fn pool(&self) -> &Arc<graph::Pool<PoolApi>> {
         &self.pool
+    }
+
+    /// Gets shared reference to the underlying pool.
+    pub fn epool(&self) -> &Arc<Mutex<EncryptedPool>> {
+        &self.epool
     }
 
     /// Get access to the underlying api

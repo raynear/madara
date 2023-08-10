@@ -320,12 +320,14 @@ pub fn new_full(config: Configuration, sealing: Option<Sealing>) -> Result<TaskM
     let rpc_extensions_builder = {
         let client = client.clone();
         let pool = transaction_pool.clone();
+        let epool = transaction_pool.clone().epool().clone();
         let graph = transaction_pool.pool().clone();
 
         Box::new(move |deny_unsafe, _| {
             let deps = crate::rpc::FullDeps {
                 client: client.clone(),
                 pool: pool.clone(),
+                epool: epool.clone(),
                 graph: graph.clone(),
                 deny_unsafe,
                 starknet: starknet_rpc_params.clone(),
