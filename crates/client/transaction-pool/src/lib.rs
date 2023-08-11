@@ -73,27 +73,44 @@ pub type FullPool<Block, Client> = BasicPool<FullChainApi<Client, Block>, Block>
 #[derive(Debug, Clone)]
 pub struct EncryptedPool {
     encrypted_tx_pool: Vec<EncryptedInvokeTransaction>,
+    encrypted_tx_pool2: Vec<EncryptedInvokeTransaction>,
+    switch: bool,
 }
 
 impl EncryptedPool {
     /// new epool
     pub fn new() -> Self {
-        Self { encrypted_tx_pool: [].to_vec() }
+        Self { encrypted_tx_pool: [].to_vec(), encrypted_tx_pool2: [].to_vec(), switch: false }
     }
 
     /// push encrypted tx to encrypted pool
-    pub fn push(&mut self, encrypted_invoke_transaction: EncryptedInvokeTransaction) {
-        self.encrypted_tx_pool.push(encrypted_invoke_transaction);
+    pub fn push(&mut self, encrypted_invoke_transaction: EncryptedInvokeTransaction) -> usize {
+        if self.switch {
+            self.encrypted_tx_pool.push(encrypted_invoke_transaction);
+            self.encrypted_tx_pool.len()
+        } else {
+            self.encrypted_tx_pool2.push(encrypted_invoke_transaction);
+            self.encrypted_tx_pool2.len()
+        }
     }
 
     /// get item
     pub fn get(&self, index: usize) -> std::option::Option<&EncryptedInvokeTransaction> {
-        self.encrypted_tx_pool.get(index)
+        if self.switch { self.encrypted_tx_pool.get(index) } else { self.encrypted_tx_pool2.get(index) }
     }
 
     /// get length
     pub fn len(&self) -> usize {
-        self.encrypted_tx_pool.len()
+        if self.switch { self.encrypted_tx_pool.len() } else { self.encrypted_tx_pool2.len() }
+    }
+
+    /// toggle pool
+    pub fn toggle(&mut self) {
+        if self.switch {
+            self.switch = false;
+        } else {
+            self.switch = true;
+        }
     }
 }
 

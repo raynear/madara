@@ -5168,6 +5168,7 @@ dependencies = [
  "futures",
  "futures-timer",
  "log",
+ "mc-transaction-pool",
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "sc-block-builder",

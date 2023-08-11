@@ -391,10 +391,13 @@ pub fn new_full(config: Configuration, sealing: Option<Sealing>) -> Result<TaskM
             return Ok(task_manager);
         }
 
+        transaction_pool.epool().clone();
+
         let proposer_factory = ProposerFactory::new(
             task_manager.spawn_handle(),
             client.clone(),
-            transaction_pool,
+            transaction_pool.clone(),
+            transaction_pool.epool().clone(),
             prometheus_registry.as_ref(),
         );
 
@@ -514,6 +517,7 @@ where
         task_manager.spawn_handle(),
         client.clone(),
         transaction_pool.clone(),
+        transaction_pool.clone().epool().clone(),
         prometheus_registry,
     );
 
