@@ -5315,6 +5315,7 @@ dependencies = [
  "futures-timer",
  "linked-hash-map",
  "log",
+ "mp-starknet",
  "num-traits 0.2.16",
  "parity-scale-codec",
  "parking_lot 0.12.1",

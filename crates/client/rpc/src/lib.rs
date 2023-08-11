@@ -491,14 +491,6 @@ where
         let extrinsic =
             convert_transaction(self.client.clone(), best_block_hash, transaction.clone(), TxType::Invoke).await?;
 
-        let epool = self.epool.clone();
-
-        // set
-        epool.lock().push("test");
-
-        // get
-        println!("{:?}", epool.lock().get(0));
-
         submit_extrinsic(self.pool.clone(), best_block_hash, extrinsic).await?;
 
         Ok(InvokeTransactionResult { transaction_hash: transaction.hash.into() })
@@ -1102,18 +1094,26 @@ where
         &self,
         encrypted_invoke_transaction: EncryptedInvokeTransaction,
     ) -> RpcResult<EncryptedMempoolTransactionResult> {
+        let epool = self.epool.clone();
+
+        epool.lock().push(encrypted_invoke_transaction);
+
+        let encrypted_invoke_transaction: EncryptedInvokeTransaction;
+        {
+            let lock = epool.lock();
+            encrypted_invoke_transaction = lock.get(0).unwrap().clone();
+        }
+
+        let invoke_tx: InvokeTransaction =
+            self.decrypt_encrypted_invoke_transaction(encrypted_invoke_transaction.clone(), None).await?;
         // TODO::
         let account_private_key: &str = "0x00c1cf1490de1352865301bb8705143f3ef938f97fdf892f1090dcb5ac7bcd1d";
         let k: &str = "0x0000000000000000000000000000000000000000000000000000000000000001";
         let salt: &str = "123";
 
         let block_number = UniqueSaturatedInto::<u64>::unique_saturated_into(self.client.info().best_number);
-
         let best_block_hash = self.client.info().best_hash;
-        let invoke_tx: InvokeTransaction =
-            self.decrypt_encrypted_invoke_transaction(encrypted_invoke_transaction, None).await?;
         let chain_id = Felt252Wrapper(self.chain_id()?.0);
-
         let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
 
         let extrinsic =
@@ -1128,7 +1128,6 @@ where
             &FieldElement::from_str(k).unwrap(),
         )
         .unwrap();
-
         Ok(EncryptedMempoolTransactionResult {
             block_number,
             order: 1 as usize,      // TODO:

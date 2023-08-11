@@ -34,3 +34,5 @@ sp-runtime = { workspace = true }
 sp-tracing = { workspace = true }
 sp-transaction-pool = { workspace = true }
 thiserror = { workspace = true }
+
+mp-starknet = { workspace = true }

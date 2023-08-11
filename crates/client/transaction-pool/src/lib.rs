@@ -41,6 +41,7 @@ use futures::prelude::*;
 pub use graph::base_pool::Limit as PoolLimit;
 pub use graph::{ChainApi, Options, Pool, Transaction, ValidatedTransaction};
 use graph::{ExtrinsicHash, IsValidator};
+use mp_starknet::transaction::types::EncryptedInvokeTransaction;
 use parking_lot::Mutex;
 use prometheus_endpoint::Registry as PrometheusRegistry;
 use sc_transaction_pool_api::error::Error as TxPoolError;
@@ -68,38 +69,25 @@ type PolledIterator<PoolApi> = Pin<Box<dyn Future<Output = ReadyIteratorFor<Pool
 /// A transaction pool for a full node.
 pub type FullPool<Block, Client> = BasicPool<FullChainApi<Client, Block>, Block>;
 
-/// encrypted tx type
-#[derive(Debug, Copy, Clone)]
-pub struct EncryptedTx {
-    encrypted_tx: &'static str,
-}
-
 /// epool
 #[derive(Debug, Clone)]
 pub struct EncryptedPool {
-    encrypted_tx_pool: Vec<EncryptedTx>,
-}
-
-impl Default for EncryptedPool {
-    fn default() -> Self {
-        Self { encrypted_tx_pool: Default::default() }
-    }
+    encrypted_tx_pool: Vec<EncryptedInvokeTransaction>,
 }
 
 impl EncryptedPool {
     /// new epool
     pub fn new() -> Self {
-        Self { encrypted_tx_pool: Default::default() }
+        Self { encrypted_tx_pool: [].to_vec() }
     }
 
     /// push encrypted tx to encrypted pool
-    pub fn push(&mut self, tx_bundle: &'static str) {
-        println!("{}", tx_bundle);
-        self.encrypted_tx_pool.push(EncryptedTx { encrypted_tx: tx_bundle });
+    pub fn push(&mut self, encrypted_invoke_transaction: EncryptedInvokeTransaction) {
+        self.encrypted_tx_pool.push(encrypted_invoke_transaction);
     }
 
     /// get item
-    pub fn get(&self, index: usize) -> std::option::Option<&EncryptedTx> {
+    pub fn get(&self, index: usize) -> std::option::Option<&EncryptedInvokeTransaction> {
         self.encrypted_tx_pool.get(index)
     }
 
