@@ -419,20 +419,20 @@ where
 
         println!("{}", self.epool.lock().len());
 
-        // let flag = self.epool.lock().switch;
+        let flag = self.epool.lock().switch;
 
-        // self.epool.lock().toggle_pool();
+        self.epool.lock().toggle();
 
-        // // 0.1초마다 확인
-        // if flag {
-        //     if self.epool.lock().encrypted_tx_pool.len() == self.epool.lock().decrypted_tx_pool_cnt {
-        //         // proceed
-        //     } else {
-        //         // wait
-        //     }
-        // }
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
 
-        // self.epool.init_tx_pool();
+        loop {
+            if self.epool.lock().len() == self.epool.lock().get_decrypted_cnt() {
+                break;
+            }
+            interval.tick().await;
+        }
+
+        self.epool.lock().init_tx_pool();
 
         // input pool data to DA
 

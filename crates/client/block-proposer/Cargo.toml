@@ -34,6 +34,7 @@ sp-inherents = { workspace = true }
 sp-runtime = { workspace = true }
 parking_lot = { workspace = true }
 mc-transaction-pool = { workspace = true }
+tokio = "1.30.0"
 
 [dev-dependencies]
 sc-transaction-pool = { workspace = true }

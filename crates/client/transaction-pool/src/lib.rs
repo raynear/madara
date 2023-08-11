@@ -78,7 +78,7 @@ pub struct EncryptedPool {
     key_received2: Vec<bool>,
     decrypted_tx_pool_cnt: usize,
     decrypted_tx_pool_cnt2: usize,
-    switch: bool,
+    pub switch: bool,
 }
 
 impl EncryptedPool {
