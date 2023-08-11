@@ -74,23 +74,37 @@ pub type FullPool<Block, Client> = BasicPool<FullChainApi<Client, Block>, Block>
 pub struct EncryptedPool {
     encrypted_tx_pool: Vec<EncryptedInvokeTransaction>,
     encrypted_tx_pool2: Vec<EncryptedInvokeTransaction>,
+    key_received: Vec<bool>,
+    key_received2: Vec<bool>,
+    decrypted_tx_pool_cnt: usize,
+    decrypted_tx_pool_cnt2: usize,
     switch: bool,
 }
 
 impl EncryptedPool {
     /// new epool
     pub fn new() -> Self {
-        Self { encrypted_tx_pool: [].to_vec(), encrypted_tx_pool2: [].to_vec(), switch: false }
+        Self {
+            encrypted_tx_pool: [].to_vec(),
+            encrypted_tx_pool2: [].to_vec(),
+            key_received: [].to_vec(),
+            key_received2: [].to_vec(),
+            decrypted_tx_pool_cnt: 0,
+            decrypted_tx_pool_cnt2: 0,
+            switch: true,
+        }
     }
 
     /// push encrypted tx to encrypted pool
-    pub fn push(&mut self, encrypted_invoke_transaction: EncryptedInvokeTransaction) -> usize {
+    pub fn set(&mut self, encrypted_invoke_transaction: EncryptedInvokeTransaction) -> usize {
         if self.switch {
             self.encrypted_tx_pool.push(encrypted_invoke_transaction);
-            self.encrypted_tx_pool.len()
+            self.key_received.push(false);
+            self.encrypted_tx_pool.len() - 1
         } else {
             self.encrypted_tx_pool2.push(encrypted_invoke_transaction);
-            self.encrypted_tx_pool2.len()
+            self.key_received2.push(false);
+            self.encrypted_tx_pool2.len() - 1
         }
     }
 
@@ -102,6 +116,42 @@ impl EncryptedPool {
     /// get length
     pub fn len(&self) -> usize {
         if self.switch { self.encrypted_tx_pool.len() } else { self.encrypted_tx_pool2.len() }
+    }
+
+    pub fn increase_decrypted_cnt(&mut self) {
+        if self.switch {
+            self.decrypted_tx_pool_cnt = self.decrypted_tx_pool_cnt + 1
+        } else {
+            self.decrypted_tx_pool_cnt2 = self.decrypted_tx_pool_cnt2 + 1
+        }
+    }
+
+    pub fn get_decrypted_cnt(&self) -> usize {
+        if self.switch { self.decrypted_tx_pool_cnt } else { self.decrypted_tx_pool_cnt2 }
+    }
+
+    pub fn update_key_received(&mut self, index: usize) {
+        if self.switch {
+            self.key_received[index] = true;
+        } else {
+            self.key_received2[index] = true;
+        }
+    }
+
+    pub fn init_tx_pool(&mut self) {
+        if self.switch {
+            self.encrypted_tx_pool.clear();
+            self.decrypted_tx_pool_cnt = 0;
+            self.key_received.clear();
+        } else {
+            self.encrypted_tx_pool.clear();
+            self.decrypted_tx_pool_cnt = 0;
+            self.key_received2.clear();
+        }
+    }
+
+    pub fn get_key_received(&self, index: usize) -> bool {
+        if self.switch { self.key_received[index] } else { self.key_received2[index] }
     }
 
     /// toggle pool
