@@ -1096,7 +1096,7 @@ where
     ) -> RpcResult<EncryptedMempoolTransactionResult> {
         let epool = self.epool.clone();
 
-        epool.lock().push(encrypted_invoke_transaction);
+        epool.lock().set(encrypted_invoke_transaction);
 
         let encrypted_invoke_transaction: EncryptedInvokeTransaction;
         {

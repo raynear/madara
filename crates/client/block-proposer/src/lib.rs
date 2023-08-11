@@ -410,6 +410,25 @@ where
         debug!(target: LOG_TARGET, "Pool status: {:?}", self.transaction_pool.status());
         let mut transaction_pushed = false;
 
+        println!("{}", self.epool.lock().len());
+
+        // let flag = self.epool.lock().switch;
+
+        // self.epool.lock().toggle_pool();
+
+        // // 0.1초마다 확인
+        // if flag {
+        //     if self.epool.lock().encrypted_tx_pool.len() == self.epool.lock().decrypted_tx_pool_cnt {
+        //         // proceed
+        //     } else {
+        //         // wait
+        //     }
+        // }
+
+        // self.epool.init_tx_pool();
+
+        // input pool data to DA
+
         let end_reason = loop {
             let pending_tx = if let Some(pending_tx) = pending_iterator.next() {
                 pending_tx
