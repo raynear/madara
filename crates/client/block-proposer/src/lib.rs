@@ -12,6 +12,8 @@ use futures::channel::oneshot;
 use futures::future::{Future, FutureExt};
 use futures::{future, select};
 use log::{debug, error, info, trace, warn};
+use mc_transaction_pool::EncryptedPool;
+use parking_lot::Mutex;
 use prometheus_endpoint::Registry as PrometheusRegistry;
 use sc_block_builder::{BlockBuilderApi, BlockBuilderProvider};
 use sc_client_api::backend;
@@ -52,6 +54,7 @@ pub struct ProposerFactory<A, B, C, PR> {
     client: Arc<C>,
     /// The transaction pool.
     transaction_pool: Arc<A>,
+    epool: Arc<Mutex<EncryptedPool>>,
     /// Prometheus Link,
     metrics: PrometheusMetrics,
     /// The default block size limit.
@@ -80,11 +83,13 @@ impl<A, B, C> ProposerFactory<A, B, C, DisableProofRecording> {
         spawn_handle: impl SpawnNamed + 'static,
         client: Arc<C>,
         transaction_pool: Arc<A>,
+        epool: Arc<Mutex<EncryptedPool>>,
         prometheus: Option<&PrometheusRegistry>,
     ) -> Self {
         ProposerFactory {
             spawn_handle: Box::new(spawn_handle),
             transaction_pool,
+            epool,
             metrics: PrometheusMetrics::new(prometheus),
             default_block_size_limit: DEFAULT_BLOCK_SIZE_LIMIT,
             soft_deadline_percent: DEFAULT_SOFT_DEADLINE_PERCENT,
@@ -146,6 +151,7 @@ where
             parent_hash,
             parent_number: *parent_header.number(),
             transaction_pool: self.transaction_pool.clone(),
+            epool: self.epool.clone(),
             now,
             metrics: self.metrics.clone(),
             default_block_size_limit: self.default_block_size_limit,
@@ -182,6 +188,7 @@ pub struct Proposer<B, Block: BlockT, C, A: TransactionPool, PR> {
     parent_hash: Block::Hash,
     parent_number: <<Block as BlockT>::Header as HeaderT>::Number,
     transaction_pool: Arc<A>,
+    epool: Arc<Mutex<EncryptedPool>>,
     now: Box<dyn Fn() -> time::Instant + Send + Sync>,
     metrics: PrometheusMetrics,
     default_block_size_limit: usize,
@@ -412,20 +419,20 @@ where
 
         println!("{}", self.epool.lock().len());
 
-        // let flag = self.epool.lock().switch;
+        let flag = self.epool.lock().switch;
 
-        // self.epool.lock().toggle_pool();
+        self.epool.lock().toggle();
 
-        // // 0.1초마다 확인
-        // if flag {
-        //     if self.epool.lock().encrypted_tx_pool.len() == self.epool.lock().decrypted_tx_pool_cnt {
-        //         // proceed
-        //     } else {
-        //         // wait
-        //     }
-        // }
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
 
-        // self.epool.init_tx_pool();
+        loop {
+            if self.epool.lock().len() == self.epool.lock().get_decrypted_cnt() {
+                break;
+            }
+            interval.tick().await;
+        }
+
+        self.epool.lock().init_tx_pool();
 
         // input pool data to DA
 

@@ -78,7 +78,7 @@ pub struct EncryptedPool {
     key_received2: Vec<bool>,
     decrypted_tx_pool_cnt: usize,
     decrypted_tx_pool_cnt2: usize,
-    switch: bool,
+    pub switch: bool,
 }
 
 impl EncryptedPool {
@@ -110,7 +110,7 @@ impl EncryptedPool {
 
     /// get item
     pub fn get(&self, index: usize) -> std::option::Option<&EncryptedInvokeTransaction> {
-        self.encrypted_tx_pool.get(index)
+        if self.switch { self.encrypted_tx_pool.get(index) } else { self.encrypted_tx_pool2.get(index) }
     }
 
     /// get length
