@@ -419,23 +419,22 @@ where
 
         println!("{}", self.epool.lock().len());
 
-        let flag = self.epool.lock().switch;
+        // let flag = self.epool.lock().switch;
+        // self.epool.lock().toggle();
+        // let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
 
-        self.epool.lock().toggle();
+        // TODO: No blocks are generated due to turning an infinite loop
+        // Error message: Discarding proposal for slot 281986393; block production took too long
+        // loop {
+        //     if self.epool.lock().len() == self.epool.lock().get_decrypted_cnt() {
+        //         break;
+        //     }
+        //     interval.tick().await;
+        // }
 
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
-
-        loop {
-            if self.epool.lock().len() == self.epool.lock().get_decrypted_cnt() {
-                break;
-            }
-            interval.tick().await;
-        }
-
-        self.epool.lock().init_tx_pool();
+        // self.epool.lock().init_tx_pool();
 
         // input pool data to DA
-
         let end_reason = loop {
             let pending_tx = if let Some(pending_tx) = pending_iterator.next() {
                 pending_tx
