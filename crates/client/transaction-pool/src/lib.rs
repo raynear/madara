@@ -22,6 +22,7 @@
 #![warn(unused_extern_crates)]
 
 mod api;
+pub mod decryptor;
 mod enactment_state;
 pub mod error;
 mod graph;
