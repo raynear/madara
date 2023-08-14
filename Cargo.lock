@@ -5256,6 +5256,7 @@ dependencies = [
  "starknet-ff",
  "starknet_api",
  "thiserror",
+ "tokio",
  "vdf",
 ]
 
@@ -5313,6 +5314,7 @@ name = "mc-transaction-pool"
 version = "4.0.0-dev"
 dependencies = [
  "async-trait",
+ "encryptor",
  "futures",
  "futures-timer",
  "linked-hash-map",
@@ -5326,14 +5328,18 @@ dependencies = [
  "sc-transaction-pool-api",
  "sc-utils",
  "serde",
+ "serde_json",
  "sp-api",
  "sp-blockchain",
  "sp-core",
  "sp-runtime",
  "sp-tracing",
  "sp-transaction-pool",
+ "starknet-crypto 0.6.0",
  "substrate-prometheus-endpoint",
  "thiserror",
+ "tokio",
+ "vdf",
 ]
 
 [[package]]
