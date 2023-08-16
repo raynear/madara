@@ -97,8 +97,8 @@ impl EncryptedPool {
     }
 
     /// push encrypted tx to encrypted pool
-    pub fn set(&mut self, encrypted_invoke_transaction: EncryptedInvokeTransaction) -> usize {
-        if self.switch {
+    pub fn set(&mut self, switch: bool, encrypted_invoke_transaction: EncryptedInvokeTransaction) -> usize {
+        if switch {
             self.encrypted_tx_pool.push(encrypted_invoke_transaction);
             self.key_received.push(false);
             self.encrypted_tx_pool.len() - 1
@@ -110,37 +110,37 @@ impl EncryptedPool {
     }
 
     /// get item
-    pub fn get(&self, index: usize) -> std::option::Option<&EncryptedInvokeTransaction> {
-        if self.switch { self.encrypted_tx_pool.get(index) } else { self.encrypted_tx_pool2.get(index) }
+    pub fn get(&self, switch: bool, index: usize) -> std::option::Option<&EncryptedInvokeTransaction> {
+        if switch { self.encrypted_tx_pool.get(index) } else { self.encrypted_tx_pool2.get(index) }
     }
 
     /// get length
-    pub fn len(&self) -> usize {
-        if self.switch { self.encrypted_tx_pool.len() } else { self.encrypted_tx_pool2.len() }
+    pub fn len(&self, switch: bool) -> usize {
+        if switch { self.encrypted_tx_pool.len() } else { self.encrypted_tx_pool2.len() }
     }
 
-    pub fn increase_decrypted_cnt(&mut self) {
-        if self.switch {
+    pub fn increase_decrypted_cnt(&mut self, switch: bool) {
+        if switch {
             self.decrypted_tx_pool_cnt = self.decrypted_tx_pool_cnt + 1
         } else {
             self.decrypted_tx_pool_cnt2 = self.decrypted_tx_pool_cnt2 + 1
         }
     }
 
-    pub fn get_decrypted_cnt(&self) -> usize {
-        if self.switch { self.decrypted_tx_pool_cnt } else { self.decrypted_tx_pool_cnt2 }
+    pub fn get_decrypted_cnt(&self, switch: bool) -> usize {
+        if switch { self.decrypted_tx_pool_cnt } else { self.decrypted_tx_pool_cnt2 }
     }
 
-    pub fn update_key_received(&mut self, index: usize) {
-        if self.switch {
+    pub fn update_key_received(&mut self, switch: bool, index: usize) {
+        if switch {
             self.key_received[index] = true;
         } else {
             self.key_received2[index] = true;
         }
     }
 
-    pub fn init_tx_pool(&mut self) {
-        if self.switch {
+    pub fn init_tx_pool(&mut self, switch: bool) {
+        if switch {
             self.encrypted_tx_pool.clear();
             self.decrypted_tx_pool_cnt = 0;
             self.key_received.clear();
@@ -151,8 +151,8 @@ impl EncryptedPool {
         }
     }
 
-    pub fn get_key_received(&self, index: usize) -> bool {
-        if self.switch { self.key_received[index] } else { self.key_received2[index] }
+    pub fn get_key_received(&self, switch: bool, index: usize) -> bool {
+        if switch { self.key_received[index] } else { self.key_received2[index] }
     }
 
     /// toggle pool

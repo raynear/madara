@@ -417,22 +417,22 @@ where
         debug!(target: LOG_TARGET, "Pool status: {:?}", self.transaction_pool.status());
         let mut transaction_pushed = false;
 
-        println!("{}", self.epool.lock().len());
-
-        // let flag = self.epool.lock().switch;
-        // self.epool.lock().toggle();
-        // let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
+        let flag = self.epool.clone().lock().switch;
+        self.epool.clone().lock().toggle();
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
 
         // TODO: No blocks are generated due to turning an infinite loop
         // Error message: Discarding proposal for slot 281986393; block production took too long
-        // loop {
-        //     if self.epool.lock().len() == self.epool.lock().get_decrypted_cnt() {
-        //         break;
-        //     }
-        //     interval.tick().await;
-        // }
+        loop {
+            let len = self.epool.clone().lock().len(flag);
+            let cnt = self.epool.clone().lock().get_decrypted_cnt(flag);
+            if len == cnt {
+                break;
+            }
+            interval.tick().await;
+        }
 
-        // self.epool.lock().init_tx_pool();
+        self.epool.clone().lock().init_tx_pool(flag);
 
         // input pool data to DA
         let end_reason = loop {
