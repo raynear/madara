@@ -58,6 +58,8 @@ vdf = { workspace = true }
 starknet-crypto = { workspace = true, default-features = false, features = [
   "alloc",
 ] }
+tokio = { workspace = true }
+
 
 [dev-dependencies]
 rstest = { workspace = true }

@@ -177,5 +177,6 @@ indexmap = { git = "https://github.com/bluss/indexmap", rev = "ca5f848e10c31e80a
 num-traits = "0.2.16"
 encryptor = { git = "https://github.com/radiusxyz/encryptor" }
 vdf = { git = "https://github.com/radiusxyz/vdf" }
+tokio = "1.30.0"
 
 

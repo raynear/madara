@@ -11,6 +11,8 @@ mod types;
 use core::str::FromStr;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 
 use encryptor::SequencerPoseidonEncryption;
 use errors::StarknetRpcApiError;
@@ -25,6 +27,7 @@ pub use mc_rpc_core::utils::*;
 use mc_rpc_core::Felt;
 pub use mc_rpc_core::StarknetRpcApiServer;
 use mc_storage::OverrideHandle;
+use mc_transaction_pool::decryptor::Decryptor;
 use mc_transaction_pool::{ChainApi, EncryptedPool, Pool};
 use mp_starknet::crypto::merkle_patricia_tree::merkle_tree::ProofNode;
 use mp_starknet::execution::types::Felt252Wrapper;
@@ -55,6 +58,7 @@ use starknet_core::types::{
     Transaction, TransactionStatus,
 };
 use starknet_crypto::sign;
+use tokio;
 use vdf::{ReturnData, VDF};
 
 use crate::constants::{MAX_EVENTS_CHUNK_SIZE, MAX_EVENTS_KEYS, MAX_STORAGE_PROOF_KEYS_BY_QUERY};
@@ -1029,9 +1033,6 @@ where
         // 1. Use trapdoor
         let y = vdf.evaluate_with_trapdoor(params.t, params.g.clone(), params.n.clone(), params.remainder.clone());
 
-        println!("params: {:?}", params);
-        println!("y: {:?}", y);
-
         let encryption_key = SequencerPoseidonEncryption::calculate_secret_key(y.as_bytes());
 
         let invoke_tx = InvokeTransaction::try_from(invoke_transaction).map_err(|e| {
@@ -1060,34 +1061,11 @@ where
         encrypted_invoke_transaction: EncryptedInvokeTransaction,
         decryption_key: Option<String>,
     ) -> RpcResult<InvokeTransaction> {
-        let encryptor = SequencerPoseidonEncryption::new();
+        let decryptor = Decryptor::new();
+        let invoke_transaction =
+            decryptor.decrypt_encrypted_invoke_transaction(encrypted_invoke_transaction, decryption_key).await;
 
-        let symmetric_key = decryption_key.unwrap_or_else(|| {
-            let base = 10; // Expression base (e.g. 10 == decimal / 16 == hex)
-            let lambda = 2048; // N's bits (ex. RSA-2048 => lambda = 2048)
-            let vdf: VDF = VDF::new(lambda, base);
-
-            // 2. Use naive
-            vdf.evaluate(
-                encrypted_invoke_transaction.t,
-                encrypted_invoke_transaction.g.clone(),
-                encrypted_invoke_transaction.n.clone(),
-            )
-        });
-
-        let symmetric_key = SequencerPoseidonEncryption::calculate_secret_key(symmetric_key.as_bytes());
-
-        let decrypted_invoke_tx = encryptor.decrypt(
-            encrypted_invoke_transaction.encrypted_data.clone(),
-            &symmetric_key,
-            encrypted_invoke_transaction.nonce,
-        );
-        let decrypted_invoke_tx = String::from_utf8(decrypted_invoke_tx).unwrap();
-        let decrypted_invoke_tx = decrypted_invoke_tx.trim_end_matches('\0');
-
-        let invoke_tx: InvokeTransaction = serde_json::from_str(&decrypted_invoke_tx)?;
-
-        Ok(invoke_tx)
+        Ok(invoke_transaction)
     }
 
     async fn add_encrypted_invoke_transaction(
@@ -1095,31 +1073,49 @@ where
         encrypted_invoke_transaction: EncryptedInvokeTransaction,
     ) -> RpcResult<EncryptedMempoolTransactionResult> {
         let epool = self.epool.clone();
+        let order = epool.lock().set(encrypted_invoke_transaction);
+        let chain_id = Felt252Wrapper(self.chain_id()?.0);
+        let block_number = UniqueSaturatedInto::<u64>::unique_saturated_into(self.client.info().best_number);
+        let best_block_hash = self.client.info().best_hash;
+        let client = self.client.clone();
+        let pool = self.pool.clone();
 
-        epool.lock().set(encrypted_invoke_transaction);
+        tokio::task::spawn(async move {
+            thread::sleep(Duration::from_secs(5));
+            println!("stompesi - start delay function");
 
-        let encrypted_invoke_transaction: EncryptedInvokeTransaction;
-        {
-            let lock = epool.lock();
-            encrypted_invoke_transaction = lock.get(0).unwrap().clone();
-        }
+            let encrypted_invoke_transaction: EncryptedInvokeTransaction;
+            {
+                let lock = epool.lock();
+                let did_received_key = lock.get_key_received(order);
 
-        let invoke_tx: InvokeTransaction =
-            self.decrypt_encrypted_invoke_transaction(encrypted_invoke_transaction.clone(), None).await?;
-        // TODO::
+                if did_received_key == true {
+                    println!("Received key");
+                    return;
+                }
+                println!("Not received key");
+                encrypted_invoke_transaction = lock.get(order).unwrap().clone();
+            }
+
+            let decryptor = Decryptor::new();
+            let invoke_tx = decryptor.decrypt_encrypted_invoke_transaction(encrypted_invoke_transaction, None).await;
+
+            {
+                let mut lock = epool.lock();
+                lock.increase_decrypted_cnt();
+            }
+
+            let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
+            let extrinsic = convert_transaction(client, best_block_hash, transaction.clone(), TxType::Invoke)
+                .await
+                .expect("Failed to submit extrinsic");
+
+            submit_extrinsic(pool, best_block_hash, extrinsic).await.expect("Failed to submit extrinsic");
+        });
+
         let account_private_key: &str = "0x00c1cf1490de1352865301bb8705143f3ef938f97fdf892f1090dcb5ac7bcd1d";
         let k: &str = "0x0000000000000000000000000000000000000000000000000000000000000001";
         let salt: &str = "123";
-
-        let block_number = UniqueSaturatedInto::<u64>::unique_saturated_into(self.client.info().best_number);
-        let best_block_hash = self.client.info().best_hash;
-        let chain_id = Felt252Wrapper(self.chain_id()?.0);
-        let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
-
-        let extrinsic =
-            convert_transaction(self.client.clone(), best_block_hash, transaction.clone(), TxType::Invoke).await?;
-
-        submit_extrinsic(self.pool.clone(), best_block_hash, extrinsic).await?;
 
         // TODO::
         let signature = sign(
@@ -1128,43 +1124,44 @@ where
             &FieldElement::from_str(k).unwrap(),
         )
         .unwrap();
+
         Ok(EncryptedMempoolTransactionResult {
             block_number,
-            order: 1 as usize,      // TODO:
-            commitment: 1 as usize, // TODO:
+            order,
+            commitment: 1 as usize,
             signature: bounded_vec!(signature.r.into(), signature.s.into(), signature.v.into()),
         })
     }
 
     async fn provide_decryption_key(&self, decryption_info: DecryptionInfo) -> RpcResult<ProvideDecryptionKeyResult> {
-        // TODO: decryption_info.order get transaction for decryption
-        let temp_encrypted_invoke_transaction = serde_json::from_str(
-          "{\"encrypted_data\": [
-                \"3065a992485fa76619877b12327d93fdfa61859c078f66fdd35b7f2cd845d746885e2d24572b4f1830841f3d9f9d75c29c63b36200fe8f92fb4e02a972509c5c394444857497d90a4289e8bb8be65e79f6b2aff309cc9c169205900660c4871b6795f40af0fb05e41f984ca1610c84ee498f391b4df07bf775b02354cd08df69dcb51f79ce932e5a238014187357a8367dd817e9583d0c9dfc01a2226a0fcd315091c5a733e6abc9ce83982d3ab437beb659250a52c6618dea1b7fe432584156beb72d3dd2c492ee24f258afd8b3f2c4939606bf4f15baf8f1144e62bf8d626339b27d39cfecf30905e320c4caccc26256af65f4e5287100d27f29420cdcb91a12f9c8195766a8c6baf9dccb3f0d4391e93cb1b06af9a6a88d0320f325a091476cd62c4f46fd5336015e1f2deb1efd6580b9ffe7bc81fdfedd9aa6d9264f4c587611f28452523910edd7fb3c9ef3080b04ec2baff952e72b62e8641beb3d9120\"
-            ],
-            \"nonce\": \"bd6020b50c89a2570d1df5cfe41bb047f97b86189658b002116fd5957160d705\"}"
-        )?;
+        let epool = self.epool.clone();
+        let encrypted_invoke_transaction: EncryptedInvokeTransaction;
+        {
+            let mut lock = epool.lock();
+            lock.update_key_received(decryption_info.order);
+            encrypted_invoke_transaction = lock.get(decryption_info.order).unwrap().clone();
+        }
 
-        // let block_number: HeaderT::Number =
-        // UniqueSaturatedInto::unique_saturated_from(decryption_info.block_number);
         let best_block_hash = self.client.info().best_hash;
-        let invoke_tx: InvokeTransaction = self
-            .decrypt_encrypted_invoke_transaction(
-                temp_encrypted_invoke_transaction,
-                Some(decryption_info.decryption_key),
-            )
-            .await?;
-        let chain_id = Felt252Wrapper(self.chain_id()?.0);
+        let decryptor = Decryptor::new();
+        let invoke_tx = decryptor
+            .decrypt_encrypted_invoke_transaction(encrypted_invoke_transaction, Some(decryption_info.decryption_key))
+            .await;
+        {
+            let mut lock = epool.lock();
+            lock.increase_decrypted_cnt();
+        }
 
+        let chain_id = Felt252Wrapper(self.chain_id()?.0);
         let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
+        let extrinsic =
+            convert_transaction(self.client.clone(), best_block_hash, transaction.clone(), TxType::Invoke).await?;
+
+        submit_extrinsic(self.pool.clone(), best_block_hash, extrinsic).await?;
 
         Ok(ProvideDecryptionKeyResult { transaction_hash: transaction.hash.into() })
     }
 }
-
-// fn epool_push(mut epool: Arc<EncryptedPool>, a: &'static str) {
-//     epool.push(a)
-// }
 
 async fn submit_extrinsic<P, B>(
     pool: Arc<P>,
