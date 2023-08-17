@@ -29,6 +29,7 @@ pub use mc_rpc_core::StarknetRpcApiServer;
 use mc_storage::OverrideHandle;
 use mc_transaction_pool::decryptor::Decryptor;
 use mc_transaction_pool::{ChainApi, EncryptedPool, Pool};
+use mp_starknet::crypto::hash::pedersen::PedersenHasher;
 use mp_starknet::crypto::merkle_patricia_tree::merkle_tree::ProofNode;
 use mp_starknet::execution::types::Felt252Wrapper;
 use mp_starknet::traits::hash::HasherT;
@@ -57,7 +58,7 @@ use starknet_core::types::{
     MaybePendingBlockWithTxs, MaybePendingTransactionReceipt, StateDiff, StateUpdate, SyncStatus, SyncStatusType,
     Transaction, TransactionStatus,
 };
-use starknet_crypto::sign;
+use starknet_crypto::{sign, verify};
 use tokio;
 use vdf::{ReturnData, VDF};
 
@@ -1039,6 +1040,7 @@ where
             error!("{e}");
             StarknetRpcApiError::InternalServerError
         })?;
+        let chain_id = Felt252Wrapper(self.chain_id()?.0);
         let invoke_tx: String = serde_json::to_string(&invoke_tx)?;
 
         let (encrypted_data, nonce, _, _) = encryptor.encrypt(invoke_tx, encryption_key);
@@ -1073,7 +1075,7 @@ where
         encrypted_invoke_transaction: EncryptedInvokeTransaction,
     ) -> RpcResult<EncryptedMempoolTransactionResult> {
         let epool = self.epool.clone();
-        let order = epool.lock().set(encrypted_invoke_transaction);
+        let order = epool.lock().set(encrypted_invoke_transaction.clone());
         let chain_id = Felt252Wrapper(self.chain_id()?.0);
         let block_number = UniqueSaturatedInto::<u64>::unique_saturated_into(self.client.info().best_number);
         let best_block_hash = self.client.info().best_hash;
@@ -1101,6 +1103,16 @@ where
             let invoke_tx = decryptor.decrypt_encrypted_invoke_transaction(encrypted_invoke_transaction, None).await;
 
             {
+                let lock = epool.lock();
+                let did_received_key = lock.get_key_received(order);
+
+                if did_received_key == true {
+                    println!("Received key");
+                    return;
+                }
+            }
+
+            {
                 let mut lock = epool.lock();
                 lock.increase_decrypted_cnt();
             }
@@ -1113,33 +1125,82 @@ where
             submit_extrinsic(pool, best_block_hash, extrinsic).await.expect("Failed to submit extrinsic");
         });
 
-        let account_private_key: &str = "0x00c1cf1490de1352865301bb8705143f3ef938f97fdf892f1090dcb5ac7bcd1d";
-        let k: &str = "0x0000000000000000000000000000000000000000000000000000000000000001";
-        let salt: &str = "123";
+        // Generate commitment
+        let sequencer_private_key: &str = "0x00c1cf1490de1352865301bb8705143f3ef938f97fdf892f1090dcb5ac7bcd1d";
+        const K: &str = "0x0000000000000000000000000000000000000000000000000000000000000001";
+        let hasher = PedersenHasher::default();
 
-        // TODO::
+        let encrypted_invoke_transaction_string = serde_json::to_string(&encrypted_invoke_transaction)?;
+        let encrypted_invoke_transaction_bytes = encrypted_invoke_transaction_string.as_bytes();
+        let encrypted_tx_info_hash = hasher.hash_bytes(encrypted_invoke_transaction_bytes);
+
+        let message = format!("{},{},{:?}", block_number, order, encrypted_tx_info_hash);
+        let message = message.as_bytes();
+        let commitment = hasher.hash_bytes(message);
+
         let signature = sign(
-            &FieldElement::from_str(account_private_key).unwrap(),
-            &FieldElement::from(chain_id),
-            &FieldElement::from_str(k).unwrap(),
+            &FieldElement::from_str(sequencer_private_key).unwrap(),
+            &FieldElement::from(commitment),
+            &FieldElement::from_str(K).unwrap(),
         )
         .unwrap();
 
         Ok(EncryptedMempoolTransactionResult {
             block_number,
             order,
-            commitment: 1 as usize,
             signature: bounded_vec!(signature.r.into(), signature.s.into(), signature.v.into()),
         })
     }
 
     async fn provide_decryption_key(&self, decryption_info: DecryptionInfo) -> RpcResult<ProvideDecryptionKeyResult> {
+        let sequencer_public_key: &str = "0x03603a2692a2ae60abb343e832ee53b55d6b25f02a3ef1565ec691edc7a209b2";
+        let hasher = PedersenHasher::default();
+
         let epool = self.epool.clone();
         let encrypted_invoke_transaction: EncryptedInvokeTransaction;
         {
             let mut lock = epool.lock();
+            let result = lock.get(decryption_info.order);
+
+            if result.is_none() {
+                error!(
+                    "Not exist encrypted invoke transaction (block number: {}, order: {})",
+                    decryption_info.block_number, decryption_info.order
+                );
+
+                // TODO: Change api response error
+                return Err(StarknetRpcApiError::InternalServerError.into());
+            }
+
+            encrypted_invoke_transaction = result.unwrap().clone();
             lock.update_key_received(decryption_info.order);
-            encrypted_invoke_transaction = lock.get(decryption_info.order).unwrap().clone();
+        }
+
+        let encrypted_invoke_transaction_string = serde_json::to_string(&encrypted_invoke_transaction)?;
+        let encrypted_invoke_transaction_bytes = encrypted_invoke_transaction_string.as_bytes();
+        let encrypted_tx_info_hash = hasher.hash_bytes(encrypted_invoke_transaction_bytes);
+
+        let message =
+            format!("{},{},{:?}", decryption_info.block_number, decryption_info.order, encrypted_tx_info_hash);
+        let message = message.as_bytes();
+        let commitment = hasher.hash_bytes(message);
+
+        let verified = verify(
+            &FieldElement::from_str(sequencer_public_key).unwrap(),
+            &FieldElement::from(commitment),
+            &FieldElement::from(decryption_info.signature[0]),
+            &FieldElement::from(decryption_info.signature[1]),
+        )
+        .unwrap();
+
+        if verified == false {
+            error!(
+                "Invalid signature (block number: {}, order: {})",
+                decryption_info.block_number, decryption_info.order
+            );
+
+            // TODO: Change api response error
+            return Err(StarknetRpcApiError::InternalServerError.into());
         }
 
         let best_block_hash = self.client.info().best_hash;

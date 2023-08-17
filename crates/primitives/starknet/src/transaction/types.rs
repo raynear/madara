@@ -339,10 +339,13 @@ pub struct EncryptedInvokeTransaction {
     /// Nonce for decrypting the encrypted transaction.
     pub nonce: String,
 
+    /// t for calculating time-lock puzzle.
     pub t: u64,
 
+    /// g for calculating time-lock puzzle.
     pub g: String,
 
+    /// n for calculating time-lock puzzle.
     pub n: String,
 }
 
