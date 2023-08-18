@@ -1076,59 +1076,58 @@ where
     ) -> RpcResult<EncryptedMempoolTransactionResult> {
         let block_height = self.current_block_number().unwrap();
         let epool = self.epool.clone();
-        let order = epool.clone().lock().set(block_height, encrypted_invoke_transaction);
+        let order = epool.clone().lock().set(block_height, encrypted_invoke_transaction.clone());
         let chain_id = Felt252Wrapper(self.chain_id()?.0);
         let block_number = UniqueSaturatedInto::<u64>::unique_saturated_into(self.client.info().best_number);
         let best_block_hash = self.client.info().best_hash;
         let client = self.client.clone();
         let pool = self.pool.clone();
 
-        // tokio::task::spawn(async move {
-        //     thread::sleep(Duration::from_secs(5));
-        //     println!("stompesi - start delay function");
+        tokio::task::spawn(async move {
+            thread::sleep(Duration::from_secs(10));
+            println!("stompesi - start delay function");
 
-        let encrypted_invoke_transaction: EncryptedInvokeTransaction;
-        {
-            // let lock = epool.lock();
-            let did_received_key = epool.clone().lock().get_key_received(block_height, order);
+            let encrypted_invoke_transaction: EncryptedInvokeTransaction;
+            {
+                // let lock = epool.lock();
+                let did_received_key = epool.clone().lock().get_key_received(block_height, order);
 
-            if did_received_key == true {
-                println!("Received key");
-                return;
+                if did_received_key == true {
+                    println!("Received key");
+                    return;
+                }
+                println!("Not received key");
+                encrypted_invoke_transaction = epool.clone().lock().get(block_height, order).unwrap().clone();
             }
-            println!("Not received key");
-            encrypted_invoke_transaction = epool.clone().lock().get(block_height, order).clone();
-        }
 
-        //     let decryptor = Decryptor::new();
-        //     let invoke_tx = decryptor.decrypt_encrypted_invoke_transaction(encrypted_invoke_transaction,
-        // None).await;
+            let decryptor = Decryptor::new();
+            let invoke_tx = decryptor.decrypt_encrypted_invoke_transaction(encrypted_invoke_transaction, None).await;
 
-        {
-            epool.clone().lock().increase_decrypted_cnt(block_height);
-        }
-        //     {
-        //         let lock = epool.lock();
-        //         let did_received_key = lock.get_key_received(switch, order);
+            {
+                epool.clone().lock().increase_decrypted_cnt(block_height);
+            }
+            {
+                // let lock = epool.lock();
+                let did_received_key = epool.clone().lock().get_key_received(block_height, order);
 
-        //         if did_received_key == true {
-        //             println!("Received key");
-        //             return;
-        //         }
-        //     }
+                if did_received_key == true {
+                    println!("Received key");
+                    return;
+                }
+            }
 
-        //     {
-        //         let mut lock = epool.lock();
-        //         lock.increase_decrypted_cnt(switch);
-        //     }
+            {
+                let mut lock = epool.lock();
+                lock.increase_decrypted_cnt(block_height);
+            }
 
-        //     let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
-        //     let extrinsic = convert_transaction(client, best_block_hash, transaction.clone(),
-        // TxType::Invoke)         .await
-        //         .expect("Failed to submit extrinsic");
+            let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
+            let extrinsic = convert_transaction(client, best_block_hash, transaction.clone(), TxType::Invoke)
+                .await
+                .expect("Failed to submit extrinsic");
 
-        //     submit_extrinsic(pool, best_block_hash, extrinsic).await.expect("Failed to submit
-        // extrinsic"); });
+            submit_extrinsic(pool, best_block_hash, extrinsic).await.expect("Failed to submit extrinsic");
+        });
 
         // Generate commitment
         let sequencer_private_key: &str = "0x00c1cf1490de1352865301bb8705143f3ef938f97fdf892f1090dcb5ac7bcd1d";
@@ -1166,19 +1165,23 @@ where
         let encrypted_invoke_transaction: EncryptedInvokeTransaction;
         {
             let mut lock = epool.lock();
-            let result = lock.get(block_height, decryption_info.order);
+            // let result =
+            encrypted_invoke_transaction = match lock.get(block_height, decryption_info.order) {
+                Err(e) => return Err(StarknetRpcApiError::InternalServerError.into()),
+                Ok(r) => r.clone(),
+            };
 
-            if result.is_none() {
-                error!(
-                    "Not exist encrypted invoke transaction (block number: {}, order: {})",
-                    decryption_info.block_number, decryption_info.order
-                );
+            // if result.is_none() {
+            //     error!(
+            //         "Not exist encrypted invoke transaction (block number: {}, order: {})",
+            //         decryption_info.block_number, decryption_info.order
+            //     );
 
-                // TODO: Change api response error
-                return Err(StarknetRpcApiError::InternalServerError.into());
-            }
+            //     // TODO: Change api response error
+            //     return Err(StarknetRpcApiError::InternalServerError.into());
+            // }
 
-            encrypted_invoke_transaction = result.unwrap().clone();
+            // encrypted_invoke_transaction = result.clone();
             lock.update_key_received(block_height, decryption_info.order);
         }
 

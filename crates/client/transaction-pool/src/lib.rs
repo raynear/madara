@@ -111,16 +111,32 @@ impl EncryptedPool {
         }
     }
 
-    pub fn get(&self, block_height: u64, index: usize) -> &EncryptedInvokeTransaction {
+    // pub fn get(&self, block_height: u64, index: usize) -> &EncryptedInvokeTransaction {
+    //     match self.txs.get(&block_height) {
+    //         Some(txs) => match txs.encrypted_pool.get(index) {
+    //             None => {
+    //                 panic!("get not exist tx from vector");
+    //             }
+    //             Some(item) => item,
+    //         },
+    //         None => {
+    //             panic!("get not exist tx from map")
+    //         }
+    //     }
+    // }
+
+    pub fn get(&self, block_height: u64, index: usize) -> Result<&EncryptedInvokeTransaction, &str> {
         match self.txs.get(&block_height) {
             Some(txs) => match txs.encrypted_pool.get(index) {
                 None => {
-                    panic!("get not exist tx from vector");
+                    // panic!("get not exist tx from vector");
+                    Err("get not exist tx from vector")
                 }
-                Some(item) => item,
+                Some(item) => Ok(item),
             },
             None => {
-                panic!("get not exist tx from map")
+                // panic!("get not exist tx from map")
+                Err("get not exist tx from map")
             }
         }
     }
