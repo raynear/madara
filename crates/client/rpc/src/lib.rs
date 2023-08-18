@@ -1087,26 +1087,26 @@ where
         //     thread::sleep(Duration::from_secs(5));
         //     println!("stompesi - start delay function");
 
-            let encrypted_invoke_transaction: EncryptedInvokeTransaction;
-            {
-                // let lock = epool.lock();
-                let did_received_key = epool.clone().lock().get_key_received(block_height, order);
+        let encrypted_invoke_transaction: EncryptedInvokeTransaction;
+        {
+            // let lock = epool.lock();
+            let did_received_key = epool.clone().lock().get_key_received(block_height, order);
 
-                if did_received_key == true {
-                    println!("Received key");
-                    return;
-                }
-                println!("Not received key");
-                encrypted_invoke_transaction = epool.clone().lock().get(block_height, order).clone();
+            if did_received_key == true {
+                println!("Received key");
+                return;
             }
+            println!("Not received key");
+            encrypted_invoke_transaction = epool.clone().lock().get(block_height, order).clone();
+        }
 
         //     let decryptor = Decryptor::new();
         //     let invoke_tx = decryptor.decrypt_encrypted_invoke_transaction(encrypted_invoke_transaction,
         // None).await;
 
-            {
-                epool.clone().lock().increase_decrypted_cnt(block_height);
-            }
+        {
+            epool.clone().lock().increase_decrypted_cnt(block_height);
+        }
         //     {
         //         let lock = epool.lock();
         //         let did_received_key = lock.get_key_received(switch, order);
@@ -1165,11 +1165,8 @@ where
         let block_height = decryption_info.block_number;
         let encrypted_invoke_transaction: EncryptedInvokeTransaction;
         {
-            epool.clone().lock().update_key_received(block_height, decryption_info.order);
-            encrypted_invoke_transaction = epool.clone().lock().get(block_height, decryption_info.order).clone();
-
             let mut lock = epool.lock();
-            let result = lock.get(switch, decryption_info.order);
+            let result = lock.get(block_height, decryption_info.order);
 
             if result.is_none() {
                 error!(
@@ -1182,7 +1179,7 @@ where
             }
 
             encrypted_invoke_transaction = result.unwrap().clone();
-            lock.update_key_received(switch, decryption_info.order);
+            lock.update_key_received(block_height, decryption_info.order);
         }
 
         let encrypted_invoke_transaction_string = serde_json::to_string(&encrypted_invoke_transaction)?;
