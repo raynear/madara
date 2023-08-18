@@ -1072,9 +1072,9 @@ where
         &self,
         encrypted_invoke_transaction: EncryptedInvokeTransaction,
     ) -> RpcResult<EncryptedMempoolTransactionResult> {
+        let block_height = self.current_block_number().unwrap();
         let epool = self.epool.clone();
-        let switch = self.epool.clone().lock().switch;
-        let order = epool.clone().lock().set(switch, encrypted_invoke_transaction);
+        let order = epool.clone().lock().set(block_height, encrypted_invoke_transaction);
         let chain_id = Felt252Wrapper(self.chain_id()?.0);
         let block_number = UniqueSaturatedInto::<u64>::unique_saturated_into(self.client.info().best_number);
         let best_block_hash = self.client.info().best_hash;
@@ -1088,22 +1088,21 @@ where
             let encrypted_invoke_transaction: EncryptedInvokeTransaction;
             {
                 // let lock = epool.lock();
-                let did_received_key = epool.clone().lock().get_key_received(switch, order);
+                let did_received_key = epool.clone().lock().get_key_received(block_height, order);
 
                 if did_received_key == true {
                     println!("Received key");
                     return;
                 }
                 println!("Not received key");
-                encrypted_invoke_transaction = epool.clone().lock().get(switch, order).unwrap().clone();
+                encrypted_invoke_transaction = epool.clone().lock().get(block_height, order).clone();
             }
 
             let decryptor = Decryptor::new();
             let invoke_tx = decryptor.decrypt_encrypted_invoke_transaction(encrypted_invoke_transaction, None).await;
 
             {
-                // let mut lock = epool.lock();
-                epool.clone().lock().increase_decrypted_cnt(switch);
+                epool.clone().lock().increase_decrypted_cnt(block_height);
             }
 
             let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
@@ -1136,12 +1135,12 @@ where
 
     async fn provide_decryption_key(&self, decryption_info: DecryptionInfo) -> RpcResult<ProvideDecryptionKeyResult> {
         let epool = self.epool.clone();
-        let switch = self.epool.clone().lock().switch;
+        let block_height = decryption_info.block_number;
         let encrypted_invoke_transaction: EncryptedInvokeTransaction;
         {
             // let mut lock = epool.lock();
-            epool.clone().lock().update_key_received(switch, decryption_info.order);
-            encrypted_invoke_transaction = epool.clone().lock().get(switch, decryption_info.order).unwrap().clone();
+            epool.clone().lock().update_key_received(block_height, decryption_info.order);
+            encrypted_invoke_transaction = epool.clone().lock().get(block_height, decryption_info.order).clone();
         }
 
         let best_block_hash = self.client.info().best_hash;
@@ -1151,7 +1150,7 @@ where
             .await;
         {
             // let mut lock = epool.lock();
-            epool.clone().lock().increase_decrypted_cnt(switch);
+            epool.clone().lock().increase_decrypted_cnt(block_height);
         }
 
         let chain_id = Felt252Wrapper(self.chain_id()?.0);
