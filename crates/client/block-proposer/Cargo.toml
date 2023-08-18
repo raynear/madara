@@ -34,8 +34,10 @@ sp-inherents = { workspace = true }
 sp-runtime = { workspace = true }
 parking_lot = { workspace = true }
 mc-transaction-pool = { workspace = true }
+serde_json = { workspace = true }
+hyper = "0.14.27"
 tokio = "1.30.0"
-
+base64 = "0.21.2"
 [dev-dependencies]
 sc-transaction-pool = { workspace = true }
 substrate-test-runtime-client = { workspace = true }

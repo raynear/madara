@@ -145,7 +145,7 @@ impl EncryptedPool {
             self.decrypted_tx_pool_cnt = 0;
             self.key_received.clear();
         } else {
-            self.encrypted_tx_pool.clear();
+            self.encrypted_tx_pool2.clear();
             self.decrypted_tx_pool_cnt = 0;
             self.key_received2.clear();
         }
@@ -162,6 +162,10 @@ impl EncryptedPool {
         } else {
             self.switch = true;
         }
+    }
+
+    pub fn get_encrypted_tx_pool(&self, switch: bool) -> Vec<EncryptedInvokeTransaction> {
+        if switch { self.encrypted_tx_pool.clone() } else { self.encrypted_tx_pool2.clone() }
     }
 }
 
