@@ -5250,6 +5250,7 @@ dependencies = [
  "sp-arithmetic",
  "sp-blockchain",
  "sp-core",
+ "sp-io",
  "sp-runtime",
  "starknet-core",
  "starknet-crypto 0.6.0",
