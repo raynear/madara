@@ -65,7 +65,6 @@ pub struct ContractData {
 pub struct EncryptedMempoolTransactionResult {
     pub block_number: u64,
     pub order: usize,
-    pub commitment: usize,
     pub signature: BoundedVec<Felt252Wrapper, MaxArraySize>,
 }
 
@@ -74,15 +73,15 @@ pub struct DecryptionInfo {
     pub block_number: u64,
     pub order: usize,
 
+    pub signature: BoundedVec<Felt252Wrapper, MaxArraySize>,
+
     pub decryption_key: String,
-    // pub signature: BoundedVec<Felt252Wrapper, MaxArraySize>,
 }
 
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProvideDecryptionKeyResult {
     /// The hash of the invoke transaction
-
     #[serde_as(as = "UfeHex")]
     pub transaction_hash: FieldElement,
 }
