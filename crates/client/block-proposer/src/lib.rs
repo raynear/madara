@@ -439,22 +439,19 @@ where
             interval.tick().await;
         }
 
-        let a = self.epool.clone().lock().get_encrypted_tx_pool(!flag);
-        let data_for_da: String = serde_json::to_string(&a).unwrap();
-        println!("data_for_da {:?}", data_for_da);
-        let encoded_data_for_da = encode_data_to_base64(&data_for_da);
-        let namespace = "AAAAAAAAAAAAAAAAAAAAAAAAAEJpDCBNOWAP3dM=";
-        if encoded_data_for_da != "W10=".to_string() {
-            // let block_height = submit_to_da(namespace, &encoded_data_for_da).await;
+        let encrypted_tx_pool = self.epool.lock().len(!flag);
 
-            // println!("stompesi - block_height: {:?}", block_height);
+        if !encrypted_tx_pool <= 0 {
+            let encrypted_tx_pool = self.epool.clone().lock().get_encrypted_tx_pool(!flag);
 
-            // get_from_da(namespace, block_height.as_str()).await;
-            get_from_da(namespace, 283056).await;
+            let data_for_da: String = serde_json::to_string(&encrypted_tx_pool).unwrap();
+            println!("this is the data_for_da: {:?}", data_for_da);
+            let encoded_data_for_da = encode_data_to_base64(&data_for_da);
+            println!("this is the encoded_data_for_da: {:?}", encoded_data_for_da);
+            let namespace = "AAAAAAAAAAAAAAAAAAAAAAAAAEJpDCBNOWAP3dM=";
+            let da_block_height = submit_to_da(namespace, &encoded_data_for_da).await;
+            println!("this is the block_height: {}", da_block_height);
         }
-        let a = self.epool.clone().lock().get_encrypted_tx_pool(flag);
-        let data_for_da: String = serde_json::to_string(&a).unwrap();
-        println!("data_for_da {:?}", data_for_da);
 
         self.epool.clone().lock().init_tx_pool(flag);
 
