@@ -439,17 +439,18 @@ where
             interval.tick().await;
         }
 
-        let encrypted_tx_pool = self.epool.lock().len(!flag);
+        let encrypted_tx_pool_size: usize = self.epool.lock().len(!flag);
 
-        if !encrypted_tx_pool <= 0 {
+        if encrypted_tx_pool_size > 0 {
             let encrypted_tx_pool = self.epool.clone().lock().get_encrypted_tx_pool(!flag);
 
             let data_for_da: String = serde_json::to_string(&encrypted_tx_pool).unwrap();
-            println!("this is the data_for_da: {:?}", data_for_da);
+            println!("this is the : {:?}", data_for_da);
             let encoded_data_for_da = encode_data_to_base64(&data_for_da);
             println!("this is the encoded_data_for_da: {:?}", encoded_data_for_da);
-            let namespace = "AAAAAAAAAAAAAAAAAAAAAAAAAEJpDCBNOWAP3dM=";
-            let da_block_height = submit_to_da(namespace, &encoded_data_for_da).await;
+            let namespace = std::env::var("da_namespace").unwrap_or("AAAAAAAAAAAAAAAAAAAAAAAAAEJpDCBNOWAP3dM=".into());
+            println!("this is the da_namespace: {:?}", namespace);
+            let da_block_height = submit_to_da(namespace.as_str(), &encoded_data_for_da).await;
             println!("this is the block_height: {}", da_block_height);
         }
 
@@ -1056,10 +1057,9 @@ async fn submit_to_da(namespace: &str, data: &str) -> String {
         ],
         "id": 1,
     });
-    // let uri = "http://localhost:26658"; // URL을 적절하게 변경
-    let uri = "http://10.29.150.24:26658"; // URL을 적절하게 변경
-
-    let req = Request::post(uri)
+    let uri = std::env::var("da_uri").unwrap_or("http://10.29.150.24:26658".into());
+    // Token should be removed from code.
+    let req = Request::post(uri.as_str())
         .header(
             AUTHORIZATION,
             HeaderValue::from_static(
