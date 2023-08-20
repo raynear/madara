@@ -1045,8 +1045,6 @@ mod tests {
 }
 
 async fn submit_to_da(namespace: &str, data: &str) -> String {
-    println!("namespace: {}", namespace);
-    println!("data: {}", data);
     let client = Client::new();
     let rpc_request = json!({
         "jsonrpc": "2.0",
@@ -1064,7 +1062,6 @@ async fn submit_to_da(namespace: &str, data: &str) -> String {
     // let uri = "http://localhost:26658"; // URL을 적절하게 변경
     let uri = "http://10.29.150.24:26658"; // URL을 적절하게 변경
 
-    println!("stompesi - submit_to_da - {:?}", uri);
     let req = Request::post(uri)
         .header(
             AUTHORIZATION,
@@ -1084,82 +1081,10 @@ async fn submit_to_da(namespace: &str, data: &str) -> String {
     if let Some(result_value) = parsed.get("result") { result_value.to_string() } else { "".to_string() }
 }
 
-async fn get_from_da(namespace: &str, block_height: u64) {
-    println!("namespace: {}", namespace);
-    println!("block_height: {}", block_height);
-    let client = Client::new();
-    let rpc_request = json!({
-      "id": 1,
-      "jsonrpc": "2.0",
-      "method": "blob.GetAll",
-      "params": [
-        block_height,
-        [
-          namespace
-        ]
-      ]
-    });
-    // let uri = "http://localhost:26658"; // URL을 적절하게 변경
-    let uri = "http://10.29.150.24:26658"; // URL을 적절하게 변경
-
-    println!("stompesi - get_from_da - {:?}", uri);
-    let req = Request::post(uri)
-        .header(
-            AUTHORIZATION,
-            HeaderValue::from_static(
-                "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.\
-                 eyJBbGxvdyI6WyJwdWJsaWMiLCJyZWFkIiwid3JpdGUiLCJhZG1pbiJdfQ.\
-                 r8BdDOQ1dyOe4K0sCWHmWArTMVgY4T6n-U4IGhuCgY8",
-            ),
-        )
-        .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
-        .body(Body::from(rpc_request.to_string()))
-        .unwrap();
-    let resp = client.request(req).await.unwrap();
-
-    println!("stompesi - get_from_da done");
-
-    // Body를 Bytes로 변환
-    let response_body = hyper::body::to_bytes(resp.into_body()).await.unwrap();
-
-    println!("stompesi - get_from_da done 4");
-    // Bytes를 사용하여 JSON 파싱
-    let parsed: Value = serde_json::from_slice(&response_body).unwrap();
-
-    // 필요한 데이터 추출
-    if let Some(data) = parsed["result"][0]["data"].as_str() {
-        println!("stompesi - data: {:?}", data);
-        let decoded_data = decode_from_base64(&data);
-        println!("stompesi - decoded_data: {:?}", decoded_data);
-
-        match decoded_data {
-            Some(x) => println!("This is decoded: {:?}", x),
-            None => println!("There is an error!"),
-        }
-    } else {
-        println!("Failed to extract data.");
-    }
-}
-
 fn encode_data_to_base64(original: &str) -> String {
-    // Convert string to bytes of ASCII
+    // Convert string to bytes
     let bytes = original.as_bytes();
     // Convert bytes to base64
     let base64_str: String = general_purpose::STANDARD.encode(&bytes);
     base64_str
-}
-
-fn decode_from_base64(original: &str) -> Option<String> {
-    let decoded = general_purpose::STANDARD.decode(original);
-
-    match decoded {
-        Ok(v) => {
-            let decoded_string = String::from_utf8(v).unwrap();
-            return Some(decoded_string);
-        }
-        Err(e) => {
-            println!("error parsing header: {e:?}");
-            return None;
-        }
-    }
 }
