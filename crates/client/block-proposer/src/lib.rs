@@ -421,7 +421,7 @@ where
 
         println!("parent_number: {:?}", self.parent_number);
 
-        let block_height = 0;
+        let block_height = self.parent_number;
 
         // self.epool.clone().lock().toggle();
         let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
@@ -435,7 +435,7 @@ where
             interval.tick().await;
         }
 
-        self.epool.clone().lock().init_tx_pool(block_height);
+        self.epool.clone().lock().init_tx_pool(block_height as u64);
 
         // input pool data to DA
         let end_reason = loop {
