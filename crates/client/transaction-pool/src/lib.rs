@@ -42,6 +42,7 @@ use futures::prelude::*;
 pub use graph::base_pool::Limit as PoolLimit;
 pub use graph::{ChainApi, Options, Pool, Transaction, ValidatedTransaction};
 use graph::{ExtrinsicHash, IsValidator};
+use mp_starknet::block;
 use mp_starknet::transaction::types::EncryptedInvokeTransaction;
 use parking_lot::Mutex;
 use prometheus_endpoint::Registry as PrometheusRegistry;
@@ -70,97 +71,119 @@ type PolledIterator<PoolApi> = Pin<Box<dyn Future<Output = ReadyIteratorFor<Pool
 /// A transaction pool for a full node.
 pub type FullPool<Block, Client> = BasicPool<FullChainApi<Client, Block>, Block>;
 
+#[derive(Debug, Clone)]
+struct Txs {
+    encrypted_pool: Vec<EncryptedInvokeTransaction>,
+    key_received: Vec<bool>,
+    decrypted_cnt: usize,
+}
+
 /// epool
 #[derive(Debug, Clone)]
 pub struct EncryptedPool {
-    encrypted_tx_pool: Vec<EncryptedInvokeTransaction>,
-    encrypted_tx_pool2: Vec<EncryptedInvokeTransaction>,
-    key_received: Vec<bool>,
-    key_received2: Vec<bool>,
-    decrypted_tx_pool_cnt: usize,
-    decrypted_tx_pool_cnt2: usize,
-    pub switch: bool,
+    txs: HashMap<u64, Txs>,
 }
 
 impl EncryptedPool {
     /// new epool
     pub fn new() -> Self {
-        Self {
-            encrypted_tx_pool: [].to_vec(),
-            encrypted_tx_pool2: [].to_vec(),
-            key_received: [].to_vec(),
-            key_received2: [].to_vec(),
-            decrypted_tx_pool_cnt: 0,
-            decrypted_tx_pool_cnt2: 0,
-            switch: true,
+        Self { txs: HashMap::new() }
+    }
+
+    pub fn set(&mut self, block_height: u64, encrypted_invoke_transaction: EncryptedInvokeTransaction) -> usize {
+        match self.txs.get_mut(&block_height) {
+            Some(txs) => {
+                txs.encrypted_pool.push(encrypted_invoke_transaction);
+                txs.key_received.push(false);
+                txs.encrypted_pool.len() - 1
+            }
+            None => {
+                self.txs.insert(
+                    block_height,
+                    Txs {
+                        encrypted_pool: vec![encrypted_invoke_transaction],
+                        key_received: vec![false],
+                        decrypted_cnt: 0,
+                    },
+                );
+                0 as usize
+            }
         }
     }
 
-    /// push encrypted tx to encrypted pool
-    pub fn set(&mut self, switch: bool, encrypted_invoke_transaction: EncryptedInvokeTransaction) -> usize {
-        if switch {
-            self.encrypted_tx_pool.push(encrypted_invoke_transaction);
-            self.key_received.push(false);
-            self.encrypted_tx_pool.len() - 1
-        } else {
-            self.encrypted_tx_pool2.push(encrypted_invoke_transaction);
-            self.key_received2.push(false);
-            self.encrypted_tx_pool2.len() - 1
+    // pub fn get(&self, block_height: u64, index: usize) -> &EncryptedInvokeTransaction {
+    //     match self.txs.get(&block_height) {
+    //         Some(txs) => match txs.encrypted_pool.get(index) {
+    //             None => {
+    //                 panic!("get not exist tx from vector");
+    //             }
+    //             Some(item) => item,
+    //         },
+    //         None => {
+    //             panic!("get not exist tx from map")
+    //         }
+    //     }
+    // }
+
+    pub fn get(&self, block_height: u64, index: usize) -> Result<&EncryptedInvokeTransaction, &str> {
+        match self.txs.get(&block_height) {
+            Some(txs) => match txs.encrypted_pool.get(index) {
+                None => {
+                    // panic!("get not exist tx from vector");
+                    Err("get not exist tx from vector")
+                }
+                Some(item) => Ok(item),
+            },
+            None => {
+                // panic!("get not exist tx from map")
+                Err("get not exist tx from map")
+            }
         }
     }
 
-    /// get item
-    pub fn get(&self, switch: bool, index: usize) -> std::option::Option<&EncryptedInvokeTransaction> {
-        if switch { self.encrypted_tx_pool.get(index) } else { self.encrypted_tx_pool2.get(index) }
-    }
-
-    /// get length
-    pub fn len(&self, switch: bool) -> usize {
-        if switch { self.encrypted_tx_pool.len() } else { self.encrypted_tx_pool2.len() }
-    }
-
-    pub fn increase_decrypted_cnt(&mut self, switch: bool) {
-        if switch {
-            self.decrypted_tx_pool_cnt = self.decrypted_tx_pool_cnt + 1
-        } else {
-            self.decrypted_tx_pool_cnt2 = self.decrypted_tx_pool_cnt2 + 1
+    pub fn len(&self, block_height: u64) -> usize {
+        match self.txs.get(&block_height) {
+            None => 0,
+            Some(txs) => txs.encrypted_pool.len(),
         }
     }
 
-    pub fn get_decrypted_cnt(&self, switch: bool) -> usize {
-        if switch { self.decrypted_tx_pool_cnt } else { self.decrypted_tx_pool_cnt2 }
-    }
-
-    pub fn update_key_received(&mut self, switch: bool, index: usize) {
-        if switch {
-            self.key_received[index] = true;
-        } else {
-            self.key_received2[index] = true;
+    pub fn increase_decrypted_cnt(&mut self, block_height: u64) -> usize {
+        match self.txs.get_mut(&block_height) {
+            None => 0,
+            Some(txs) => {
+                txs.decrypted_cnt = txs.decrypted_cnt + 1;
+                txs.decrypted_cnt
+            }
         }
     }
 
-    pub fn init_tx_pool(&mut self, switch: bool) {
-        if switch {
-            self.encrypted_tx_pool.clear();
-            self.decrypted_tx_pool_cnt = 0;
-            self.key_received.clear();
-        } else {
-            self.encrypted_tx_pool.clear();
-            self.decrypted_tx_pool_cnt = 0;
-            self.key_received2.clear();
+    pub fn get_decrypted_cnt(&self, block_height: u64) -> usize {
+        match self.txs.get(&block_height) {
+            None => 0,
+            Some(txs) => txs.decrypted_cnt,
         }
     }
 
-    pub fn get_key_received(&self, switch: bool, index: usize) -> bool {
-        if switch { self.key_received[index] } else { self.key_received2[index] }
+    pub fn update_key_received(&mut self, block_height: u64, index: usize) {
+        match self.txs.get_mut(&block_height) {
+            Some(txs) => {
+                txs.key_received[index] = true;
+            }
+            None => {
+                panic!("not exist txs");
+            }
+        }
     }
 
-    /// toggle pool
-    pub fn toggle(&mut self) {
-        if self.switch {
-            self.switch = false;
-        } else {
-            self.switch = true;
+    pub fn init_tx_pool(&mut self, block_height: u64) {
+        // TODO:
+    }
+
+    pub fn get_key_received(&mut self, block_height: u64, index: usize) -> bool {
+        match self.txs.get_mut(&block_height) {
+            None => false,
+            Some(txs) => txs.key_received[index],
         }
     }
 }
