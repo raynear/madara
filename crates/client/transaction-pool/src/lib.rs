@@ -121,7 +121,10 @@ impl Txs {
     }
 
     pub fn get_key_received(&self, index: u64) -> bool {
-        self.key_received.get(&index).is_some()
+        match self.key_received.get(&index) {
+            Some(received) => received.clone(),
+            None => false,
+        }
     }
 }
 
@@ -209,7 +212,7 @@ impl EncryptedPool {
     pub fn get_tx_cnt(&self, block_height: u64) -> u64 {
         match self.txs.get(&block_height) {
             Some(txs) => txs.get_tx_cnt(),
-            None => panic!("no txs on {}", block_height),
+            None => 0,
         }
     }
 
@@ -223,7 +226,7 @@ impl EncryptedPool {
     pub fn get_decrypted_cnt(&self, block_height: u64) -> u64 {
         match self.txs.get(&block_height) {
             Some(txs) => txs.get_decrypted_cnt(),
-            None => panic!("no txs on {}", block_height),
+            None => 0,
         }
     }
 
