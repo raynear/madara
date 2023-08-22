@@ -370,6 +370,59 @@ where
     }
 }
 
+pub trait EncryptedTransactionPool: TransactionPool {
+    fn submit_one_with_order(
+        &self,
+        at: &BlockId<Self::Block>,
+        source: TransactionSource,
+        xt: TransactionFor<Self>,
+        order: usize,
+    ) -> PoolFuture<TxHash<Self>, Self::Error>;
+
+    fn submit_at_with_order(
+        &self,
+        at: &BlockId<Self::Block>,
+        source: TransactionSource,
+        xts: Vec<TransactionFor<Self>>,
+        order: Option<usize>,
+    ) -> PoolFuture<Vec<Result<TxHash<Self>, Self::Error>>, Self::Error>;
+}
+impl<PoolApi, Block> EncryptedTransactionPool for BasicPool<PoolApi, Block>
+where
+    Block: BlockT,
+    PoolApi: 'static + graph::ChainApi<Block = Block>,
+{
+    fn submit_one_with_order(
+        &self,
+        at: &BlockId<Self::Block>,
+        source: TransactionSource,
+        xt: TransactionFor<Self>,
+        order: usize,
+    ) -> PoolFuture<TxHash<Self>, Self::Error> {
+        let pool = self.pool.clone();
+        let at = *at;
+
+        self.metrics.report(|metrics| metrics.submitted_transactions.inc());
+
+        async move { pool.submit_one(&at, source, xt, Some(order)).await }.boxed()
+    }
+
+    fn submit_at_with_order(
+        &self,
+        at: &BlockId<Self::Block>,
+        source: TransactionSource,
+        xts: Vec<TransactionFor<Self>>,
+        order: Option<usize>,
+    ) -> PoolFuture<Vec<Result<TxHash<Self>, Self::Error>>, Self::Error> {
+        let pool = self.pool.clone();
+        let at = *at;
+
+        self.metrics.report(|metrics| metrics.submitted_transactions.inc_by(xts.len() as u64));
+
+        async move { pool.submit_at(&at, source, xts, order).await }.boxed()
+    }
+}
+
 impl<PoolApi, Block> TransactionPool for BasicPool<PoolApi, Block>
 where
     Block: BlockT,
@@ -391,7 +444,7 @@ where
 
         self.metrics.report(|metrics| metrics.submitted_transactions.inc_by(xts.len() as u64));
 
-        async move { pool.submit_at(&at, source, xts).await }.boxed()
+        async move { pool.submit_at(&at, source, xts, None).await }.boxed()
     }
 
     fn submit_one(
@@ -405,7 +458,7 @@ where
 
         self.metrics.report(|metrics| metrics.submitted_transactions.inc());
 
-        async move { pool.submit_one(&at, source, xt).await }.boxed()
+        async move { pool.submit_one(&at, source, xt, None).await }.boxed()
     }
 
     fn submit_and_watch(
@@ -573,7 +626,7 @@ where
             validity,
         );
 
-        self.pool.validated_pool().submit(vec![validated]).remove(0)
+        self.pool.validated_pool().submit(vec![validated], None).remove(0)
     }
 }
 
