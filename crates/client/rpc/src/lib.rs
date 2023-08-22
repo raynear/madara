@@ -521,6 +521,19 @@ where
         &self,
         deploy_account_transaction: BroadcastedDeployAccountTransaction,
     ) -> RpcResult<DeployAccountTransactionResult> {
+        let epool = self.epool.clone();
+        let block_height = self.current_block_number().unwrap();
+
+        if epool.clone().lock().is_enabled() {
+            match epool.clone().get_mut(&block_height) {
+                Some(txs) => txs.increase_order(),
+                None => {
+                    epool.clone().new(block_height);
+                    txs.increase_order();
+                },
+            }
+        }
+
         let best_block_hash = self.client.info().best_hash;
         let chain_id = Felt252Wrapper(self.chain_id()?.0);
 
@@ -784,6 +797,19 @@ where
         &self,
         declare_transaction: BroadcastedDeclareTransaction,
     ) -> RpcResult<DeclareTransactionResult> {
+        let epool = self.epool.clone();
+        let block_height = self.current_block_number().unwrap();
+
+        if epool.clone().lock().is_enabled() {
+            match epool.clone().get_mut(&block_height) {
+                Some(txs) => txs.increase_order(),
+                None => {
+                    epool.clone().new(block_height);
+                    txs.increase_order();
+                },
+            }
+        }
+
         let best_block_hash = self.client.info().best_hash;
         let chain_id = Felt252Wrapper(self.chain_id()?.0);
 

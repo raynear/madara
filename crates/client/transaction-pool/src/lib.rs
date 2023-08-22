@@ -150,6 +150,13 @@ impl EncryptedPool {
         Self { txs: HashMap::new(), enabled: true }
     }
 
+    pub fn new(&mut self, block_height: u64) {
+        self.txs.insert(
+            block_height,
+            Txs { encrypted_pool: HashMap::new(), key_received: HashMap::new(), decrypted_cnt: 0, order: 0 },
+        );
+    }
+
     pub fn set(&mut self, block_height: u64, encrypted_invoke_transaction: EncryptedInvokeTransaction) -> u64 {
         match self.txs.get_mut(&block_height) {
             Some(txs) => txs.set(encrypted_invoke_transaction),
