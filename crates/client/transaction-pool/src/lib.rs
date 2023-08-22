@@ -82,12 +82,25 @@ struct Txs {
 #[derive(Debug, Clone)]
 pub struct EncryptedPool {
     txs: HashMap<u64, Txs>,
+    enable: bool,
 }
 
 impl EncryptedPool {
+    pub fn enable_encrypted_mempool(&mut self) {
+        self.enable = true;
+    }
+
+    pub fn disable_encrypted_mempool(&mut self) {
+        self.enable = false;
+    }
+
+    pub fn is_enable(&self) -> bool {
+        self.enable
+    }
+
     /// new epool
     pub fn new() -> Self {
-        Self { txs: HashMap::new() }
+        Self { txs: HashMap::new(), enable: true }
     }
 
     pub fn set(&mut self, block_height: u64, encrypted_invoke_transaction: EncryptedInvokeTransaction) -> usize {

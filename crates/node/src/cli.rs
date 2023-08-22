@@ -42,6 +42,9 @@ pub struct ExtendedRunCmd {
 
     #[clap(long)]
     pub madara_path: Option<PathBuf>,
+
+    #[clap(long)]
+    pub encrypted_mempool: bool,
 }
 
 #[allow(clippy::large_enum_variant)]

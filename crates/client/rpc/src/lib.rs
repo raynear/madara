@@ -484,6 +484,12 @@ where
         &self,
         invoke_transaction: BroadcastedInvokeTransaction,
     ) -> RpcResult<InvokeTransactionResult> {
+        let epool = self.epool.clone();
+
+        if epool.lock().is_enable() {
+            return Err(StarknetRpcApiError::EncryptedMempoolEnabled.into());
+        }
+
         let best_block_hash = self.client.info().best_hash;
         let invoke_tx = InvokeTransaction::try_from(invoke_transaction).map_err(|e| {
             error!("{e}");
@@ -1083,6 +1089,10 @@ where
         let client = self.client.clone();
         let pool = self.pool.clone();
 
+        if !epool.lock().is_enable() {
+            return Err(StarknetRpcApiError::EncryptedMempoolDisabled.into());
+        }
+
         tokio::task::spawn(async move {
             thread::sleep(Duration::from_secs(10));
             println!("stompesi - start delay function");
@@ -1114,11 +1124,6 @@ where
                     println!("Received key");
                     return;
                 }
-            }
-
-            {
-                let mut lock = epool.lock();
-                lock.increase_decrypted_cnt(block_height);
             }
 
             let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
@@ -1163,6 +1168,10 @@ where
         let epool = self.epool.clone();
         let block_height = decryption_info.block_number;
         let encrypted_invoke_transaction: EncryptedInvokeTransaction;
+        if !epool.clone().lock().is_enable() {
+            return Err(StarknetRpcApiError::EncryptedMempoolDisabled.into());
+        }
+
         {
             let mut lock = epool.lock();
             // let result =
