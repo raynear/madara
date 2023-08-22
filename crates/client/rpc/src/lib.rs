@@ -525,13 +525,7 @@ where
         let block_height = self.current_block_number().unwrap();
 
         if epool.clone().lock().is_enabled() {
-            match epool.clone().get_mut(&block_height) {
-                Some(txs) => txs.increase_order(),
-                None => {
-                    epool.clone().new(block_height);
-                    txs.increase_order();
-                },
-            }
+            epool.clone().lock().increase_order(block_height);
         }
 
         let best_block_hash = self.client.info().best_hash;
@@ -801,13 +795,7 @@ where
         let block_height = self.current_block_number().unwrap();
 
         if epool.clone().lock().is_enabled() {
-            match epool.clone().get_mut(&block_height) {
-                Some(txs) => txs.increase_order(),
-                None => {
-                    epool.clone().new(block_height);
-                    txs.increase_order();
-                },
-            }
+            epool.clone().lock().increase_order(block_height);
         }
 
         let best_block_hash = self.client.info().best_hash;
@@ -1202,7 +1190,7 @@ where
         {
             let mut lock = epool.lock();
             // let result =
-            encrypted_invoke_transaction = match lock.get(block_height, decryption_info.order) {
+            encrypted_invoke_transaction = match lock.get(block_height, decryption_info.order as u64) {
                 Err(e) => return Err(StarknetRpcApiError::InternalServerError.into()),
                 Ok(r) => r.clone(),
             };
@@ -1218,7 +1206,7 @@ where
             // }
 
             // encrypted_invoke_transaction = result.clone();
-            lock.update_key_received(block_height, decryption_info.order);
+            lock.update_key_received(block_height, decryption_info.order as u64);
         }
 
         let encrypted_invoke_transaction_string = serde_json::to_string(&encrypted_invoke_transaction)?;

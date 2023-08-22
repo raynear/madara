@@ -64,14 +64,14 @@ pub struct ContractData {
 #[derive(Debug, Serialize)]
 pub struct EncryptedMempoolTransactionResult {
     pub block_number: u64,
-    pub order: usize,
+    pub order: u64,
     pub signature: BoundedVec<Felt252Wrapper, MaxArraySize>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DecryptionInfo {
     pub block_number: u64,
-    pub order: usize,
+    pub order: u64,
 
     pub signature: BoundedVec<Felt252Wrapper, MaxArraySize>,
 

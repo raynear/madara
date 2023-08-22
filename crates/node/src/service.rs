@@ -401,8 +401,6 @@ pub fn new_full(
             return Ok(task_manager);
         }
 
-        transaction_pool.epool().clone();
-
         let proposer_factory = ProposerFactory::new(
             task_manager.spawn_handle(),
             client.clone(),

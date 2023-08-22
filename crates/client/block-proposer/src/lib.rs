@@ -424,9 +424,9 @@ where
             let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
 
             loop {
-                let len = self.epool.clone().lock().get_order(block_height);
-                let cnt = self.epool.clone().lock().get_decrypted_cnt(block_height);
-                if len == cnt {
+                let tx_cnt = self.epool.clone().lock().get_tx_cnt(block_height);
+                let dec_cnt = self.epool.clone().lock().get_decrypted_cnt(block_height);
+                if tx_cnt == dec_cnt {
                     break;
                 }
                 interval.tick().await;
