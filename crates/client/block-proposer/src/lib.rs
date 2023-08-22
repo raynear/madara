@@ -417,14 +417,14 @@ where
         debug!(target: LOG_TARGET, "Pool status: {:?}", self.transaction_pool.status());
         let mut transaction_pushed = false;
 
-        if self.epool.clone().lock().is_enable() {
+        if self.epool.clone().lock().is_enabled() {
             // wait decryption
             let block_height = self.parent_number.to_string().parse::<u64>().unwrap();
 
             let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
 
             loop {
-                let len = self.epool.clone().lock().len(block_height);
+                let len = self.epool.clone().lock().get_order(block_height);
                 let cnt = self.epool.clone().lock().get_decrypted_cnt(block_height);
                 if len == cnt {
                     break;
@@ -432,7 +432,7 @@ where
                 interval.tick().await;
             }
 
-            self.epool.clone().lock().init_tx_pool(block_height);
+            // self.epool.clone().lock().init_tx_pool(block_height);
         }
 
         // input pool data to DA

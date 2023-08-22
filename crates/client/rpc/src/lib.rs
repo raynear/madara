@@ -486,7 +486,7 @@ where
     ) -> RpcResult<InvokeTransactionResult> {
         let epool = self.epool.clone();
 
-        if epool.lock().is_enable() {
+        if epool.lock().is_enabled() {
             return Err(StarknetRpcApiError::EncryptedMempoolEnabled.into());
         }
 
@@ -1080,18 +1080,19 @@ where
         &self,
         encrypted_invoke_transaction: EncryptedInvokeTransaction,
     ) -> RpcResult<EncryptedMempoolTransactionResult> {
-        let block_height = self.current_block_number().unwrap();
         let epool = self.epool.clone();
+
+        if !epool.clone().lock().is_enabled() {
+            return Err(StarknetRpcApiError::EncryptedMempoolDisabled.into());
+        }
+
+        let block_height = self.current_block_number().unwrap();
         let order = epool.clone().lock().set(block_height, encrypted_invoke_transaction.clone());
         let chain_id = Felt252Wrapper(self.chain_id()?.0);
         let block_number = UniqueSaturatedInto::<u64>::unique_saturated_into(self.client.info().best_number);
         let best_block_hash = self.client.info().best_hash;
         let client = self.client.clone();
         let pool = self.pool.clone();
-
-        if !epool.lock().is_enable() {
-            return Err(StarknetRpcApiError::EncryptedMempoolDisabled.into());
-        }
 
         tokio::task::spawn(async move {
             thread::sleep(Duration::from_secs(10));
@@ -1168,7 +1169,7 @@ where
         let epool = self.epool.clone();
         let block_height = decryption_info.block_number;
         let encrypted_invoke_transaction: EncryptedInvokeTransaction;
-        if !epool.clone().lock().is_enable() {
+        if !epool.clone().lock().is_enabled() {
             return Err(StarknetRpcApiError::EncryptedMempoolDisabled.into());
         }
 

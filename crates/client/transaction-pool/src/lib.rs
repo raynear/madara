@@ -73,130 +73,139 @@ pub type FullPool<Block, Client> = BasicPool<FullChainApi<Client, Block>, Block>
 
 #[derive(Debug, Clone)]
 struct Txs {
-    encrypted_pool: Vec<EncryptedInvokeTransaction>,
-    key_received: Vec<bool>,
+    encrypted_pool: HashMap<u64, EncryptedInvokeTransaction>,
+    key_received: HashMap<u64, bool>,
     decrypted_cnt: usize,
+    order: u64,
+}
+
+impl Txs {
+    pub fn set(&mut self, encrypted_invoke_transaction: EncryptedInvokeTransaction) -> u64 {
+        self.encrypted_pool.insert(self.order, encrypted_invoke_transaction);
+        self.key_received.insert(self.order, false);
+        self.increase_order();
+        self.order - 1
+    }
+
+    pub fn get(&self, index: u64) -> Result<EncryptedInvokeTransaction, &str> {
+        match self.encrypted_pool.get(&index) {
+            None => Err("get not exist tx from vector"),
+            Some(item) => Ok(item),
+        }
+    }
+
+    pub fn increase_order(&mut self) -> u64 {
+        self.order = self.order + 1;
+        self.order
+    }
+
+    pub fn get_order(&self) -> u64 {
+        self.order
+    }
+
+    pub fn increase_decrypted_cnt(&mut self) -> usize {
+        self.decrypted_cnt = self.decrypted_cnt + 1;
+        self.decrypted_cnt
+    }
+
+    pub fn get_decrypted_cnt(&self) -> usize {
+        self.decrypted_cnt
+    }
+
+    pub fn update_key_received(&mut self, index: usize) {
+        self.key_received.insert(index, true);
+    }
+
+    pub fn get_key_received(&self, index: usize) -> bool {
+        self.key_received.get(index)
+    }
 }
 
 /// epool
 #[derive(Debug, Clone)]
 pub struct EncryptedPool {
     txs: HashMap<u64, Txs>,
-    enable: bool,
+    enabled: bool,
 }
 
 impl EncryptedPool {
     pub fn enable_encrypted_mempool(&mut self) {
-        self.enable = true;
+        self.enabled = true;
     }
 
     pub fn disable_encrypted_mempool(&mut self) {
-        self.enable = false;
+        self.enabled = false;
     }
 
-    pub fn is_enable(&self) -> bool {
-        self.enable
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub fn is_disabled(&self) -> bool {
+        !self.enabled
     }
 
     /// new epool
     pub fn new() -> Self {
-        Self { txs: HashMap::new(), enable: true }
+        Self { txs: HashMap::new(), enabled: true }
     }
 
-    pub fn set(&mut self, block_height: u64, encrypted_invoke_transaction: EncryptedInvokeTransaction) -> usize {
+    pub fn set(&mut self, block_height: u64, encrypted_invoke_transaction: EncryptedInvokeTransaction) -> u64 {
         match self.txs.get_mut(&block_height) {
-            Some(txs) => {
-                txs.encrypted_pool.push(encrypted_invoke_transaction);
-                txs.key_received.push(false);
-                txs.encrypted_pool.len() - 1
-            }
+            Some(txs) => txs.set(encrypted_invoke_transaction),
             None => {
                 self.txs.insert(
                     block_height,
-                    Txs {
-                        encrypted_pool: vec![encrypted_invoke_transaction],
-                        key_received: vec![false],
-                        decrypted_cnt: 0,
-                    },
+                    Txs { encrypted_pool: HashMap::new(), key_received: HashMap::new(), decrypted_cnt: 0, order: 0 },
                 );
-                0 as usize
+                match self.txs.get_mut(&block_height) {
+                    Some(txs) => txs.set(encrypted_invoke_transaction),
+                    None => panic!(""),
+                }
+                0
             }
         }
     }
-
-    // pub fn get(&self, block_height: u64, index: usize) -> &EncryptedInvokeTransaction {
-    //     match self.txs.get(&block_height) {
-    //         Some(txs) => match txs.encrypted_pool.get(index) {
-    //             None => {
-    //                 panic!("get not exist tx from vector");
-    //             }
-    //             Some(item) => item,
-    //         },
-    //         None => {
-    //             panic!("get not exist tx from map")
-    //         }
-    //     }
-    // }
 
     pub fn get(&self, block_height: u64, index: usize) -> Result<&EncryptedInvokeTransaction, &str> {
         match self.txs.get(&block_height) {
-            Some(txs) => match txs.encrypted_pool.get(index) {
-                None => {
-                    // panic!("get not exist tx from vector");
-                    Err("get not exist tx from vector")
-                }
-                Some(item) => Ok(item),
-            },
-            None => {
-                // panic!("get not exist tx from map")
-                Err("get not exist tx from map")
-            }
+            Some(txs) => txs.encrypted_pool.get(index),
+            None => Err("get not exist tx from map"),
         }
     }
 
-    pub fn len(&self, block_height: u64) -> usize {
+    pub fn get_order(&self, block_height: u64) -> u64 {
         match self.txs.get(&block_height) {
-            None => 0,
-            Some(txs) => txs.encrypted_pool.len(),
+            Some(txs) => txs.get_order(),
+            None => panic!("no txs on {}", block_height),
         }
     }
 
     pub fn increase_decrypted_cnt(&mut self, block_height: u64) -> usize {
         match self.txs.get_mut(&block_height) {
-            None => 0,
-            Some(txs) => {
-                txs.decrypted_cnt = txs.decrypted_cnt + 1;
-                txs.decrypted_cnt
-            }
+            Some(txs) => txs.increase_decrypted_cnt(),
+            None => panic!("no txs on {}", block_height),
         }
     }
 
     pub fn get_decrypted_cnt(&self, block_height: u64) -> usize {
         match self.txs.get(&block_height) {
-            None => 0,
-            Some(txs) => txs.decrypted_cnt,
+            Some(txs) => txs.get_decrypted_cnt(),
+            None => panic!("no txs on {}", block_height),
         }
     }
 
     pub fn update_key_received(&mut self, block_height: u64, index: usize) {
         match self.txs.get_mut(&block_height) {
-            Some(txs) => {
-                txs.key_received[index] = true;
-            }
-            None => {
-                panic!("not exist txs");
-            }
+            Some(txs) => txs.update_key_received(index),
+            None => panic!("not exist txs"),
         }
-    }
-
-    pub fn init_tx_pool(&mut self, block_height: u64) {
-        // TODO:
     }
 
     pub fn get_key_received(&mut self, block_height: u64, index: usize) -> bool {
         match self.txs.get_mut(&block_height) {
-            None => false,
-            Some(txs) => txs.key_received[index],
+            Some(txs) => txs.get_key_received(index),
+            None => panic!("no txs on {}", block_height),
         }
     }
 }
