@@ -391,8 +391,6 @@ pub fn new_full(config: Configuration, sealing: Option<Sealing>) -> Result<TaskM
             return Ok(task_manager);
         }
 
-        transaction_pool.epool().clone();
-
         let proposer_factory = ProposerFactory::new(
             task_manager.spawn_handle(),
             client.clone(),
