@@ -28,8 +28,7 @@ use mc_rpc_core::Felt;
 pub use mc_rpc_core::StarknetRpcApiServer;
 use mc_storage::OverrideHandle;
 use mc_transaction_pool::decryptor::Decryptor;
-use mc_transaction_pool::{BasicPool, ChainApi, EncryptedPool, EncryptedTransactionPool, Pool};
-use mp_starknet::crypto::hash::pedersen::PedersenHasher;
+use mc_transaction_pool::{ChainApi, EncryptedPool, EncryptedTransactionPool, Pool};
 use mp_starknet::crypto::merkle_patricia_tree::merkle_tree::ProofNode;
 use mp_starknet::execution::types::Felt252Wrapper;
 use mp_starknet::traits::hash::HasherT;
@@ -1132,15 +1131,14 @@ where
         // Generate commitment
         let sequencer_private_key: &str = "0x00c1cf1490de1352865301bb8705143f3ef938f97fdf892f1090dcb5ac7bcd1d";
         const K: &str = "0x0000000000000000000000000000000000000000000000000000000000000001";
-        let hasher = PedersenHasher::default();
 
         let encrypted_invoke_transaction_string = serde_json::to_string(&encrypted_invoke_transaction)?;
         let encrypted_invoke_transaction_bytes = encrypted_invoke_transaction_string.as_bytes();
-        let encrypted_tx_info_hash = hasher.hash_bytes(encrypted_invoke_transaction_bytes);
+        let encrypted_tx_info_hash = self.hasher.hash_bytes(encrypted_invoke_transaction_bytes);
 
         let message = format!("{},{},{:?}", block_number, order, encrypted_tx_info_hash);
         let message = message.as_bytes();
-        let commitment = hasher.hash_bytes(message);
+        let commitment = self.hasher.hash_bytes(message);
 
         let signature = sign(
             &FieldElement::from_str(sequencer_private_key).unwrap(),
@@ -1158,7 +1156,6 @@ where
 
     async fn provide_decryption_key(&self, decryption_info: DecryptionInfo) -> RpcResult<ProvideDecryptionKeyResult> {
         let sequencer_public_key: &str = "0x03603a2692a2ae60abb343e832ee53b55d6b25f02a3ef1565ec691edc7a209b2";
-        let hasher = PedersenHasher::default();
 
         let epool = self.epool.clone();
         let block_height = decryption_info.block_number;
@@ -1182,12 +1179,12 @@ where
 
         let encrypted_invoke_transaction_string = serde_json::to_string(&encrypted_invoke_transaction)?;
         let encrypted_invoke_transaction_bytes = encrypted_invoke_transaction_string.as_bytes();
-        let encrypted_tx_info_hash = hasher.hash_bytes(encrypted_invoke_transaction_bytes);
+        let encrypted_tx_info_hash = self.hasher.hash_bytes(encrypted_invoke_transaction_bytes);
 
         let message =
             format!("{},{},{:?}", decryption_info.block_number, decryption_info.order, encrypted_tx_info_hash);
         let message = message.as_bytes();
-        let commitment = hasher.hash_bytes(message);
+        let commitment = self.hasher.hash_bytes(message);
 
         let verified = verify(
             &FieldElement::from_str(sequencer_public_key).unwrap(),
