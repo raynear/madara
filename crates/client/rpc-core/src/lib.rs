@@ -170,7 +170,8 @@ pub trait StarknetRpcApi {
         encrypted_invoke_transaction: EncryptedInvokeTransaction,
     ) -> RpcResult<EncryptedMempoolTransactionResult>;
 
-    /// Allow a client to pass the decryption key, after the client received the order_commitment from sequencer.
+    /// Allow a client to pass the decryption key, after the client received the order_commitment
+    /// from sequencer.
     #[method(name = "provideDecryptionKey")]
     async fn provide_decryption_key(&self, decryption_info: DecryptionInfo) -> RpcResult<ProvideDecryptionKeyResult>;
 }
