@@ -60,6 +60,9 @@ starknet-crypto = { workspace = true, default-features = false, features = [
   "alloc",
 ] }
 tokio = { workspace = true }
+dotenv = "0.15"
+num-bigint = { version = "0.4.3", default-features = false }
+rand = "0.8"
 
 
 [dev-dependencies]
