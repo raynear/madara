@@ -433,7 +433,7 @@ pub trait EncryptedTransactionPool: TransactionPool {
         at: &BlockId<Self::Block>,
         source: TransactionSource,
         xt: TransactionFor<Self>,
-        order: usize,
+        order: u64,
     ) -> PoolFuture<TxHash<Self>, Self::Error>;
 
     fn submit_at_with_order(
@@ -441,7 +441,7 @@ pub trait EncryptedTransactionPool: TransactionPool {
         at: &BlockId<Self::Block>,
         source: TransactionSource,
         xts: Vec<TransactionFor<Self>>,
-        order: Option<usize>,
+        order: Option<u64>,
     ) -> PoolFuture<Vec<Result<TxHash<Self>, Self::Error>>, Self::Error>;
 }
 impl<PoolApi, Block> EncryptedTransactionPool for BasicPool<PoolApi, Block>
@@ -454,7 +454,7 @@ where
         at: &BlockId<Self::Block>,
         source: TransactionSource,
         xt: TransactionFor<Self>,
-        order: usize,
+        order: u64,
     ) -> PoolFuture<TxHash<Self>, Self::Error> {
         let pool = self.pool.clone();
         let at = *at;
@@ -469,7 +469,7 @@ where
         at: &BlockId<Self::Block>,
         source: TransactionSource,
         xts: Vec<TransactionFor<Self>>,
-        order: Option<usize>,
+        order: Option<u64>,
     ) -> PoolFuture<Vec<Result<TxHash<Self>, Self::Error>>, Self::Error> {
         let pool = self.pool.clone();
         let at = *at;

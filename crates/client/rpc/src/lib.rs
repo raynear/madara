@@ -1279,7 +1279,7 @@ async fn submit_extrinsic_with_order<P, B>(
     pool: Arc<P>,
     best_block_hash: <B as BlockT>::Hash,
     extrinsic: <B as BlockT>::Extrinsic,
-    order: usize,
+    order: u64,
 ) -> Result<<P as TransactionPool>::Hash, StarknetRpcApiError>
 where
     P: EncryptedTransactionPool<Block = B> + 'static,
