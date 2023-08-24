@@ -387,6 +387,26 @@ where
         deadline: time::Instant,
         block_size_limit: Option<usize>,
     ) -> Result<EndProposingReason, sp_blockchain::Error> {
+        if self.epool.clone().lock().is_enabled() {
+            // wait decryption
+            let block_height = self.parent_number.to_string().parse::<u64>().unwrap() + 1;
+
+            println!("wait tx decryption at {}", block_height);
+
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
+
+            loop {
+                let tx_cnt = self.epool.clone().lock().get_tx_cnt(block_height);
+                let dec_cnt = self.epool.clone().lock().get_decrypted_cnt(block_height);
+                if tx_cnt == dec_cnt {
+                    break;
+                }
+                interval.tick().await;
+            }
+
+            // self.epool.clone().lock().init_tx_pool(block_height);
+        }
+
         // proceed with transactions
         // We calculate soft deadline used only in case we start skipping transactions.
         let now = (self.now)();
@@ -416,26 +436,6 @@ where
         debug!(target: LOG_TARGET, "Attempting to push transactions from the pool.");
         debug!(target: LOG_TARGET, "Pool status: {:?}", self.transaction_pool.status());
         let mut transaction_pushed = false;
-
-        // wait decryption
-
-        println!("parent_number: {:?}", self.parent_number);
-
-        let block_height = self.parent_number.to_string().parse::<u64>().unwrap();
-
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
-
-        loop {
-            let len = self.epool.clone().lock().len(block_height);
-            let cnt = self.epool.clone().lock().get_decrypted_cnt(block_height);
-            if len == cnt {
-                break;
-            }
-            interval.tick().await;
-        }
-
-        self.epool.clone().lock().init_tx_pool(block_height);
-
         // input pool data to DA
         let end_reason = loop {
             let pending_tx = if let Some(pending_tx) = pending_iterator.next() {

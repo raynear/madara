@@ -244,7 +244,11 @@ where
 }
 
 /// Builds a new service for a full client.
-pub fn new_full(config: Configuration, sealing: Option<Sealing>) -> Result<TaskManager, ServiceError> {
+pub fn new_full(
+    config: Configuration,
+    sealing: Option<Sealing>,
+    encrypted_mempool: bool,
+) -> Result<TaskManager, ServiceError> {
     let build_import_queue =
         if sealing.is_some() { build_manual_seal_import_queue } else { build_aura_grandpa_import_queue };
 
@@ -258,6 +262,12 @@ pub fn new_full(config: Configuration, sealing: Option<Sealing>) -> Result<TaskM
         transaction_pool,
         other: (block_import, grandpa_link, mut telemetry, madara_backend),
     } = new_partial(&config, build_import_queue)?;
+
+    if encrypted_mempool {
+        transaction_pool.epool().clone().lock().enable_encrypted_mempool();
+    } else {
+        transaction_pool.epool().clone().lock().disable_encrypted_mempool();
+    }
 
     let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
 
@@ -390,8 +400,6 @@ pub fn new_full(config: Configuration, sealing: Option<Sealing>) -> Result<TaskM
             log::info!("Manual Seal Ready");
             return Ok(task_manager);
         }
-
-        transaction_pool.epool().clone();
 
         let proposer_factory = ProposerFactory::new(
             task_manager.spawn_handle(),

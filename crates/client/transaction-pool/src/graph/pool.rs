@@ -171,10 +171,14 @@ impl<B: ChainApi> Pool<B> {
         at: &BlockId<B::Block>,
         source: TransactionSource,
         xts: impl IntoIterator<Item = ExtrinsicFor<B>>,
+        order: Option<u64>,
     ) -> Result<Vec<Result<ExtrinsicHash<B>, B::Error>>, B::Error> {
         let xts = xts.into_iter().map(|xt| (source, xt));
         let validated_transactions = self.verify(at, xts, CheckBannedBeforeVerify::Yes).await?;
-        Ok(self.validated_pool.submit(validated_transactions.into_values()))
+        match order {
+            Some(order) => Ok(self.validated_pool.submit(validated_transactions.into_values(), Some(order))),
+            None => Ok(self.validated_pool.submit(validated_transactions.into_values(), None)),
+        }
     }
 
     /// Resubmit the given extrinsics to the pool.
@@ -188,7 +192,7 @@ impl<B: ChainApi> Pool<B> {
     ) -> Result<Vec<Result<ExtrinsicHash<B>, B::Error>>, B::Error> {
         let xts = xts.into_iter().map(|xt| (source, xt));
         let validated_transactions = self.verify(at, xts, CheckBannedBeforeVerify::No).await?;
-        Ok(self.validated_pool.submit(validated_transactions.into_values()))
+        Ok(self.validated_pool.submit(validated_transactions.into_values(), None))
     }
 
     /// Imports one unverified extrinsic to the pool
@@ -197,9 +201,18 @@ impl<B: ChainApi> Pool<B> {
         at: &BlockId<B::Block>,
         source: TransactionSource,
         xt: ExtrinsicFor<B>,
+        order: Option<u64>,
     ) -> Result<ExtrinsicHash<B>, B::Error> {
-        let res = self.submit_at(at, source, std::iter::once(xt)).await?.pop();
-        res.expect("One extrinsic passed; one result returned; qed")
+        match order {
+            Some(order) => {
+                let res = self.submit_at(at, source, std::iter::once(xt), Some(order)).await?.pop();
+                res.expect("One extrinsic passed; one result returned; qed")
+            }
+            None => {
+                let res = self.submit_at(at, source, std::iter::once(xt), None).await?.pop();
+                res.expect("One extrinsic passed; one result returned; qed")
+            }
+        }
     }
 
     /// Import a single extrinsic and starts to watch its progress in the pool.

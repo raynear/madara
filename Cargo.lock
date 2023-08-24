@@ -2721,7 +2721,7 @@ checksum = "a357d28ed41a50f9c765dbfe56cbc04a64e53e5fc58ba79fbc34c10ef3df831f"
 [[package]]
 name = "encryptor"
 version = "0.0.1"
-source = "git+https://github.com/radiusxyz/encryptor#c27dca57b95e986cd9f9e4256a1d6bf705856401"
+source = "git+https://github.com/radiusxyz/encryptor#41f4a767641fed8be65d9776c2f7ba16418b5333"
 dependencies = [
  "canonical",
  "canonical_derive",

@@ -72,118 +72,175 @@ type PolledIterator<PoolApi> = Pin<Box<dyn Future<Output = ReadyIteratorFor<Pool
 pub type FullPool<Block, Client> = BasicPool<FullChainApi<Client, Block>, Block>;
 
 #[derive(Debug, Clone)]
-struct Txs {
-    encrypted_pool: Vec<EncryptedInvokeTransaction>,
-    key_received: Vec<bool>,
-    decrypted_cnt: usize,
+pub struct Txs {
+    encrypted_pool: HashMap<u64, EncryptedInvokeTransaction>,
+    key_received: HashMap<u64, bool>,
+    decrypted_cnt: u64,
+    order: u64,
+}
+
+impl Txs {
+    pub fn set(&mut self, encrypted_invoke_transaction: EncryptedInvokeTransaction) -> u64 {
+        self.encrypted_pool.insert(self.order, encrypted_invoke_transaction);
+        self.key_received.insert(self.order, false);
+        self.increase_order();
+        self.order - 1
+    }
+
+    pub fn get(&self, index: u64) -> Result<EncryptedInvokeTransaction, &str> {
+        match self.encrypted_pool.get(&index) {
+            Some(item) => Ok(item.clone()),
+            None => Err("get not exist tx from vector"),
+        }
+    }
+
+    pub fn increase_order(&mut self) -> u64 {
+        self.order = self.order + 1;
+        self.order
+    }
+
+    pub fn get_order(&self) -> u64 {
+        self.order
+    }
+
+    pub fn get_tx_cnt(&self) -> u64 {
+        self.encrypted_pool.len() as u64
+    }
+
+    pub fn increase_decrypted_cnt(&mut self) -> u64 {
+        self.decrypted_cnt = self.decrypted_cnt + 1;
+        self.decrypted_cnt
+    }
+
+    pub fn get_decrypted_cnt(&self) -> u64 {
+        self.decrypted_cnt
+    }
+
+    pub fn update_key_received(&mut self, index: u64) {
+        self.key_received.insert(index, true);
+    }
+
+    pub fn get_key_received(&self, index: u64) -> bool {
+        match self.key_received.get(&index) {
+            Some(received) => received.clone(),
+            None => false,
+        }
+    }
 }
 
 /// epool
 #[derive(Debug, Clone)]
 pub struct EncryptedPool {
     txs: HashMap<u64, Txs>,
+    enabled: bool,
 }
 
 impl EncryptedPool {
-    /// new epool
-    pub fn new() -> Self {
-        Self { txs: HashMap::new() }
+    pub fn enable_encrypted_mempool(&mut self) {
+        self.enabled = true;
     }
 
-    pub fn set(&mut self, block_height: u64, encrypted_invoke_transaction: EncryptedInvokeTransaction) -> usize {
+    pub fn disable_encrypted_mempool(&mut self) {
+        self.enabled = false;
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub fn is_disabled(&self) -> bool {
+        !self.enabled
+    }
+
+    /// new epool
+    pub fn new() -> Self {
+        Self { txs: HashMap::new(), enabled: true }
+    }
+
+    pub fn new_block(&mut self, block_height: u64) -> Txs {
+        self.txs.insert(
+            block_height,
+            Txs { encrypted_pool: HashMap::new(), key_received: HashMap::new(), decrypted_cnt: 0, order: 0 },
+        );
+        self.txs.get(&block_height).unwrap().clone()
+    }
+
+    pub fn set(&mut self, block_height: u64, encrypted_invoke_transaction: EncryptedInvokeTransaction) -> u64 {
         match self.txs.get_mut(&block_height) {
-            Some(txs) => {
-                txs.encrypted_pool.push(encrypted_invoke_transaction);
-                txs.key_received.push(false);
-                txs.encrypted_pool.len() - 1
-            }
+            Some(txs) => txs.set(encrypted_invoke_transaction),
             None => {
                 self.txs.insert(
                     block_height,
-                    Txs {
-                        encrypted_pool: vec![encrypted_invoke_transaction],
-                        key_received: vec![false],
-                        decrypted_cnt: 0,
-                    },
+                    Txs { encrypted_pool: HashMap::new(), key_received: HashMap::new(), decrypted_cnt: 0, order: 0 },
                 );
-                0 as usize
+                match self.txs.get_mut(&block_height) {
+                    Some(txs) => txs.set(encrypted_invoke_transaction),
+                    None => panic!(""),
+                };
+                0
             }
         }
     }
 
-    // pub fn get(&self, block_height: u64, index: usize) -> &EncryptedInvokeTransaction {
-    //     match self.txs.get(&block_height) {
-    //         Some(txs) => match txs.encrypted_pool.get(index) {
-    //             None => {
-    //                 panic!("get not exist tx from vector");
-    //             }
-    //             Some(item) => item,
-    //         },
-    //         None => {
-    //             panic!("get not exist tx from map")
-    //         }
-    //     }
-    // }
-
-    pub fn get(&self, block_height: u64, index: usize) -> Result<&EncryptedInvokeTransaction, &str> {
+    pub fn get(&self, block_height: u64, index: u64) -> Result<&EncryptedInvokeTransaction, &str> {
         match self.txs.get(&block_height) {
-            Some(txs) => match txs.encrypted_pool.get(index) {
-                None => {
-                    // panic!("get not exist tx from vector");
-                    Err("get not exist tx from vector")
-                }
-                Some(item) => Ok(item),
+            Some(txs) => match txs.encrypted_pool.get(&index) {
+                Some(tx) => Ok(tx),
+                None => Err("get not exist tx from map"),
             },
+            None => Err("get not exist tx from map"),
+        }
+    }
+
+    pub fn increase_order(&mut self, block_height: u64) -> u64 {
+        match self.txs.get_mut(&block_height) {
+            Some(txs) => txs.increase_order(),
             None => {
-                // panic!("get not exist tx from map")
-                Err("get not exist tx from map")
+                let mut txs = self.new_block(block_height);
+                txs.increase_order()
             }
         }
     }
 
-    pub fn len(&self, block_height: u64) -> usize {
+    pub fn get_order(&self, block_height: u64) -> u64 {
         match self.txs.get(&block_height) {
-            None => 0,
-            Some(txs) => txs.encrypted_pool.len(),
+            Some(txs) => txs.get_order(),
+            None => panic!("no txs on {}", block_height),
         }
     }
 
-    pub fn increase_decrypted_cnt(&mut self, block_height: u64) -> usize {
-        match self.txs.get_mut(&block_height) {
-            None => 0,
-            Some(txs) => {
-                txs.decrypted_cnt = txs.decrypted_cnt + 1;
-                txs.decrypted_cnt
-            }
-        }
-    }
-
-    pub fn get_decrypted_cnt(&self, block_height: u64) -> usize {
+    pub fn get_tx_cnt(&self, block_height: u64) -> u64 {
         match self.txs.get(&block_height) {
+            Some(txs) => txs.get_tx_cnt(),
             None => 0,
-            Some(txs) => txs.decrypted_cnt,
         }
     }
 
-    pub fn update_key_received(&mut self, block_height: u64, index: usize) {
+    pub fn increase_decrypted_cnt(&mut self, block_height: u64) -> u64 {
         match self.txs.get_mut(&block_height) {
-            Some(txs) => {
-                txs.key_received[index] = true;
-            }
-            None => {
-                panic!("not exist txs");
-            }
+            Some(txs) => txs.increase_decrypted_cnt(),
+            None => panic!("no txs on {}", block_height),
         }
     }
 
-    pub fn init_tx_pool(&mut self, block_height: u64) {
-        // TODO:
+    pub fn get_decrypted_cnt(&self, block_height: u64) -> u64 {
+        match self.txs.get(&block_height) {
+            Some(txs) => txs.get_decrypted_cnt(),
+            None => 0,
+        }
     }
 
-    pub fn get_key_received(&mut self, block_height: u64, index: usize) -> bool {
+    pub fn update_key_received(&mut self, block_height: u64, index: u64) {
         match self.txs.get_mut(&block_height) {
-            None => false,
-            Some(txs) => txs.key_received[index],
+            Some(txs) => txs.update_key_received(index),
+            None => panic!("not exist txs"),
+        }
+    }
+
+    pub fn get_key_received(&mut self, block_height: u64, index: u64) -> bool {
+        match self.txs.get_mut(&block_height) {
+            Some(txs) => txs.get_key_received(index),
+            None => panic!("no txs on {}", block_height),
         }
     }
 }
@@ -370,6 +427,59 @@ where
     }
 }
 
+pub trait EncryptedTransactionPool: TransactionPool {
+    fn submit_one_with_order(
+        &self,
+        at: &BlockId<Self::Block>,
+        source: TransactionSource,
+        xt: TransactionFor<Self>,
+        order: u64,
+    ) -> PoolFuture<TxHash<Self>, Self::Error>;
+
+    fn submit_at_with_order(
+        &self,
+        at: &BlockId<Self::Block>,
+        source: TransactionSource,
+        xts: Vec<TransactionFor<Self>>,
+        order: Option<u64>,
+    ) -> PoolFuture<Vec<Result<TxHash<Self>, Self::Error>>, Self::Error>;
+}
+impl<PoolApi, Block> EncryptedTransactionPool for BasicPool<PoolApi, Block>
+where
+    Block: BlockT,
+    PoolApi: 'static + graph::ChainApi<Block = Block>,
+{
+    fn submit_one_with_order(
+        &self,
+        at: &BlockId<Self::Block>,
+        source: TransactionSource,
+        xt: TransactionFor<Self>,
+        order: u64,
+    ) -> PoolFuture<TxHash<Self>, Self::Error> {
+        let pool = self.pool.clone();
+        let at = *at;
+
+        self.metrics.report(|metrics| metrics.submitted_transactions.inc());
+
+        async move { pool.submit_one(&at, source, xt, Some(order)).await }.boxed()
+    }
+
+    fn submit_at_with_order(
+        &self,
+        at: &BlockId<Self::Block>,
+        source: TransactionSource,
+        xts: Vec<TransactionFor<Self>>,
+        order: Option<u64>,
+    ) -> PoolFuture<Vec<Result<TxHash<Self>, Self::Error>>, Self::Error> {
+        let pool = self.pool.clone();
+        let at = *at;
+
+        self.metrics.report(|metrics| metrics.submitted_transactions.inc_by(xts.len() as u64));
+
+        async move { pool.submit_at(&at, source, xts, order).await }.boxed()
+    }
+}
+
 impl<PoolApi, Block> TransactionPool for BasicPool<PoolApi, Block>
 where
     Block: BlockT,
@@ -391,7 +501,7 @@ where
 
         self.metrics.report(|metrics| metrics.submitted_transactions.inc_by(xts.len() as u64));
 
-        async move { pool.submit_at(&at, source, xts).await }.boxed()
+        async move { pool.submit_at(&at, source, xts, None).await }.boxed()
     }
 
     fn submit_one(
@@ -405,7 +515,7 @@ where
 
         self.metrics.report(|metrics| metrics.submitted_transactions.inc());
 
-        async move { pool.submit_one(&at, source, xt).await }.boxed()
+        async move { pool.submit_one(&at, source, xt, None).await }.boxed()
     }
 
     fn submit_and_watch(
@@ -573,7 +683,7 @@ where
             validity,
         );
 
-        self.pool.validated_pool().submit(vec![validated]).remove(0)
+        self.pool.validated_pool().submit(vec![validated], None).remove(0)
     }
 }
 
