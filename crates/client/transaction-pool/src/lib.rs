@@ -203,6 +203,7 @@ impl EncryptedPool {
     }
 
     pub fn get_order(&self, block_height: u64) -> u64 {
+
         match self.txs.get(&block_height) {
             Some(txs) => txs.get_order(),
             None => panic!("no txs on {}", block_height),
@@ -211,6 +212,7 @@ impl EncryptedPool {
 
     pub fn get_tx_cnt(&self, block_height: u64) -> u64 {
         match self.txs.get(&block_height) {
+
             Some(txs) => txs.get_tx_cnt(),
             None => 0,
         }
@@ -241,6 +243,24 @@ impl EncryptedPool {
         match self.txs.get_mut(&block_height) {
             Some(txs) => txs.get_key_received(index),
             None => panic!("no txs on {}", block_height),
+        }
+    }
+
+    pub fn get_encrypted_tx_pool(&self, block_height: u64) -> Vec<EncryptedInvokeTransaction> {
+        match self.txs.get(&block_height) {
+            None => [].to_vec(),
+            Some(txs) => txs.encrypted_pool.values().cloned().collect(),
+        }
+    }
+
+    pub fn init_tx_pool(&mut self, block_height: u64) {
+        // TODO:
+    }
+
+    pub fn len(&self, block_height: u64) -> usize {
+        match self.txs.get(&block_height) {
+            None => 0,
+            Some(txs) => txs.encrypted_pool.values().cloned().collect::<Vec<_>>().len(),
         }
     }
 }

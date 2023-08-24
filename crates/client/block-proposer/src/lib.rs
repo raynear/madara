@@ -5,12 +5,17 @@
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time;
+use std::{env, time};
 
+use base64::engine::general_purpose;
+use base64::Engine as _;
 use codec::Encode;
+use dotenv::dotenv;
 use futures::channel::oneshot;
 use futures::future::{Future, FutureExt};
 use futures::{future, select};
+use hyper::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use hyper::{Body, Client, Request};
 use log::{debug, error, info, trace, warn};
 use mc_transaction_pool::EncryptedPool;
 use parking_lot::Mutex;
@@ -19,6 +24,7 @@ use sc_block_builder::{BlockBuilderApi, BlockBuilderProvider};
 use sc_client_api::backend;
 use sc_proposer_metrics::{EndProposingReason, MetricsLink as PrometheusMetrics};
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool};
+use serde_json::{json, Value};
 use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_blockchain::ApplyExtrinsicFailed::Validity;
 use sp_blockchain::Error::ApplyExtrinsicFailed;
@@ -26,8 +32,10 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus::{DisableProofRecording, ProofRecording, Proposal};
 use sp_core::traits::SpawnNamed;
 use sp_inherents::InherentData;
+use sp_runtime::offchain::http;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use sp_runtime::{Digest, Percent, SaturatedConversion};
+use tokio;
 
 /// Default block size limit in bytes used by [`Proposer`].
 ///
@@ -403,8 +411,6 @@ where
                 }
                 interval.tick().await;
             }
-
-            // self.epool.clone().lock().init_tx_pool(block_height);
         }
 
         // proceed with transactions
@@ -436,6 +442,39 @@ where
         debug!(target: LOG_TARGET, "Attempting to push transactions from the pool.");
         debug!(target: LOG_TARGET, "Pool status: {:?}", self.transaction_pool.status());
         let mut transaction_pushed = false;
+
+        // wait decryption
+
+        println!("parent_number: {:?}", self.parent_number);
+
+        let block_height = self.parent_number.to_string().parse::<u64>().unwrap();
+
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
+
+        loop {
+            let len = self.epool.clone().lock().len(block_height);
+            let cnt = self.epool.clone().lock().get_decrypted_cnt(block_height);
+            if len as u64 == cnt {
+                break;
+            }
+            interval.tick().await;
+        }
+
+        let encrypted_tx_pool_size: usize = self.epool.lock().len(block_height);
+
+        if encrypted_tx_pool_size > 0 {
+            let encrypted_tx_pool = self.epool.clone().lock().get_encrypted_tx_pool(block_height);
+
+            let data_for_da: String = serde_json::to_string(&encrypted_tx_pool).unwrap();
+            println!("this is the : {:?}", data_for_da);
+            let encoded_data_for_da = encode_data_to_base64(&data_for_da);
+            println!("this is the encoded_data_for_da: {:?}", encoded_data_for_da);
+            let da_block_height = submit_to_da(&encoded_data_for_da).await;
+            println!("this is the block_height: {}", da_block_height);
+        }
+
+        self.epool.clone().lock().init_tx_pool(block_height);
+
         // input pool data to DA
         let end_reason = loop {
             let pending_tx = if let Some(pending_tx) = pending_iterator.next() {
@@ -1020,4 +1059,53 @@ mod tests {
         // with increased blocklimit we should include all of them
         assert_eq!(block.extrinsics().len(), extrinsics_num);
     }
+}
+
+async fn submit_to_da(data: &str) -> String {
+    dotenv().ok();
+    let da_host = env::var("DA_HOST").expect("DA_HOST must be set");
+    let da_namespace = env::var("DA_NAMESPACE").expect("DA_NAMESPACE must be set");
+    let da_auth_token = env::var("DA_AUTH_TOKEN").expect("DA_AUTH_TOKEN must be set");
+    let da_auth = format!("Bearer {}", da_auth_token);
+
+    println!("this is the da_namespace: {:?}", da_namespace);
+
+    let client = Client::new();
+    let rpc_request = json!({
+        "jsonrpc": "2.0",
+        "method": "blob.Submit",
+        "params": [
+            [
+                {
+                    "namespace": da_namespace,
+                    "data": data,
+                }
+            ]
+        ],
+        "id": 1,
+    });
+
+    let uri = std::env::var("da_uri").unwrap_or(da_host.into());
+    // Token should be removed from code.
+    let req = Request::post(uri.as_str())
+        .header(AUTHORIZATION, HeaderValue::from_str(da_auth.as_str()).unwrap())
+        .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
+        .body(Body::from(rpc_request.to_string()))
+        .unwrap();
+    let resp = client.request(req).await.unwrap();
+
+    let response_body = hyper::body::to_bytes(resp.into_body()).await.unwrap();
+    let parsed: Value = serde_json::from_slice(&response_body).unwrap();
+
+    println!("stompesi - {:?}", parsed);
+
+    if let Some(result_value) = parsed.get("result") { result_value.to_string() } else { "".to_string() }
+}
+
+fn encode_data_to_base64(original: &str) -> String {
+    // Convert string to bytes
+    let bytes = original.as_bytes();
+    // Convert bytes to base64
+    let base64_str: String = general_purpose::STANDARD.encode(&bytes);
+    base64_str
 }
