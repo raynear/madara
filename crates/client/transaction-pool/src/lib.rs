@@ -72,14 +72,25 @@ type PolledIterator<PoolApi> = Pin<Box<dyn Future<Output = ReadyIteratorFor<Pool
 pub type FullPool<Block, Client> = BasicPool<FullChainApi<Client, Block>, Block>;
 
 #[derive(Debug, Clone)]
+/// Txs struct
+/// 1 Txs for 1 block
+/// * `encrypted_pool`: Map store encrypted tx
+/// * `key_received`: Map store specific order's key receivement.
+/// * `decrypted_cnt`: decrypted tx count
+/// * `order`: current order
 pub struct Txs {
+    /// store encrypted tx
     encrypted_pool: HashMap<u64, EncryptedInvokeTransaction>,
+    /// store specific order's key receivement.
     key_received: HashMap<u64, bool>,
+    /// decrypted tx count
     decrypted_cnt: u64,
+    /// current order
     order: u64,
 }
 
 impl Txs {
+    /// add encrypted tx on Txs
     pub fn set(&mut self, encrypted_invoke_transaction: EncryptedInvokeTransaction) -> u64 {
         self.encrypted_pool.insert(self.order, encrypted_invoke_transaction);
         self.key_received.insert(self.order, false);
@@ -87,41 +98,52 @@ impl Txs {
         self.order - 1
     }
 
-    pub fn get(&self, index: u64) -> Result<EncryptedInvokeTransaction, &str> {
-        match self.encrypted_pool.get(&index) {
+    /// get encrypted tx for order
+    pub fn get(&self, order: u64) -> Result<EncryptedInvokeTransaction, &str> {
+        match self.encrypted_pool.get(&order) {
             Some(item) => Ok(item.clone()),
             None => Err("get not exist tx from vector"),
         }
     }
 
+    /// increase order
+    /// not only for set new encrypted tx
+    /// but also for declare tx, deploy account tx
     pub fn increase_order(&mut self) -> u64 {
         self.order = self.order + 1;
         self.order
     }
 
+    /// order getter
     pub fn get_order(&self) -> u64 {
         self.order
     }
 
+    /// get encrypted tx count
+    /// it's not order
     pub fn get_tx_cnt(&self) -> u64 {
         self.encrypted_pool.len() as u64
     }
 
+    /// increase decrypted tx count
     pub fn increase_decrypted_cnt(&mut self) -> u64 {
         self.decrypted_cnt = self.decrypted_cnt + 1;
         self.decrypted_cnt
     }
 
+    /// get decrypted tx count
     pub fn get_decrypted_cnt(&self) -> u64 {
         self.decrypted_cnt
     }
 
-    pub fn update_key_received(&mut self, index: u64) {
-        self.key_received.insert(index, true);
+    /// update key received information
+    pub fn update_key_received(&mut self, order: u64) {
+        self.key_received.insert(order, true);
     }
 
-    pub fn get_key_received(&self, index: u64) -> bool {
-        match self.key_received.get(&index) {
+    /// get key received information
+    pub fn get_key_received(&self, order: u64) -> bool {
+        match self.key_received.get(&order) {
             Some(received) => received.clone(),
             None => false,
         }
@@ -130,24 +152,34 @@ impl Txs {
 
 /// epool
 #[derive(Debug, Clone)]
+/// EncryptedPool struct
+/// 1 epool for node
+/// * `txs`: Map of Txs, key:value = block_height:Txs
+/// * `enabled`: epool enabler. if whole part is splitted by package. it have to be removed.
 pub struct EncryptedPool {
+    /// Map of Txs, key:value = block_height:Txs
     txs: HashMap<u64, Txs>,
+    /// epool enabler. if whole part is splitted by package. it have to be removed.
     enabled: bool,
 }
 
 impl EncryptedPool {
+    /// enable epool
     pub fn enable_encrypted_mempool(&mut self) {
         self.enabled = true;
     }
 
+    /// disable epool
     pub fn disable_encrypted_mempool(&mut self) {
         self.enabled = false;
     }
 
+    /// check epool is enabled
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }
 
+    /// check epool is disabled
     pub fn is_disabled(&self) -> bool {
         !self.enabled
     }
@@ -157,6 +189,7 @@ impl EncryptedPool {
         Self { txs: HashMap::new(), enabled: true }
     }
 
+    /// add new Txs for block_height
     pub fn new_block(&mut self, block_height: u64) -> Txs {
         self.txs.insert(
             block_height,
@@ -165,6 +198,7 @@ impl EncryptedPool {
         self.txs.get(&block_height).unwrap().clone()
     }
 
+    /// add encrypted tx by block_height
     pub fn set(&mut self, block_height: u64, encrypted_invoke_transaction: EncryptedInvokeTransaction) -> u64 {
         match self.txs.get_mut(&block_height) {
             Some(txs) => txs.set(encrypted_invoke_transaction),
@@ -182,9 +216,10 @@ impl EncryptedPool {
         }
     }
 
-    pub fn get(&self, block_height: u64, index: u64) -> Result<&EncryptedInvokeTransaction, &str> {
+    /// get encrypted tx by block_height and order
+    pub fn get(&self, block_height: u64, order: u64) -> Result<&EncryptedInvokeTransaction, &str> {
         match self.txs.get(&block_height) {
-            Some(txs) => match txs.encrypted_pool.get(&index) {
+            Some(txs) => match txs.encrypted_pool.get(&order) {
                 Some(tx) => Ok(tx),
                 None => Err("get not exist tx from map"),
             },
@@ -192,6 +227,7 @@ impl EncryptedPool {
         }
     }
 
+    /// increase order for block_height
     pub fn increase_order(&mut self, block_height: u64) -> u64 {
         match self.txs.get_mut(&block_height) {
             Some(txs) => txs.increase_order(),
@@ -202,6 +238,7 @@ impl EncryptedPool {
         }
     }
 
+    /// order getter
     pub fn get_order(&self, block_height: u64) -> u64 {
         match self.txs.get(&block_height) {
             Some(txs) => txs.get_order(),
@@ -209,6 +246,7 @@ impl EncryptedPool {
         }
     }
 
+    /// get encrypted tx count (not order)
     pub fn get_tx_cnt(&self, block_height: u64) -> u64 {
         match self.txs.get(&block_height) {
             Some(txs) => txs.get_tx_cnt(),
@@ -216,6 +254,7 @@ impl EncryptedPool {
         }
     }
 
+    /// increase decrypted tx count
     pub fn increase_decrypted_cnt(&mut self, block_height: u64) -> u64 {
         match self.txs.get_mut(&block_height) {
             Some(txs) => txs.increase_decrypted_cnt(),
@@ -223,6 +262,7 @@ impl EncryptedPool {
         }
     }
 
+    /// get decrypted tx count
     pub fn get_decrypted_cnt(&self, block_height: u64) -> u64 {
         match self.txs.get(&block_height) {
             Some(txs) => txs.get_decrypted_cnt(),
@@ -230,16 +270,18 @@ impl EncryptedPool {
         }
     }
 
-    pub fn update_key_received(&mut self, block_height: u64, index: u64) {
+    /// update key received information
+    pub fn update_key_received(&mut self, block_height: u64, order: u64) {
         match self.txs.get_mut(&block_height) {
-            Some(txs) => txs.update_key_received(index),
+            Some(txs) => txs.update_key_received(order),
             None => panic!("not exist txs"),
         }
     }
 
-    pub fn get_key_received(&mut self, block_height: u64, index: u64) -> bool {
+    /// get key received information
+    pub fn get_key_received(&mut self, block_height: u64, order: u64) -> bool {
         match self.txs.get_mut(&block_height) {
-            Some(txs) => txs.get_key_received(index),
+            Some(txs) => txs.get_key_received(order),
             None => panic!("no txs on {}", block_height),
         }
     }
