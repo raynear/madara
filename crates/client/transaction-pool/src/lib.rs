@@ -22,6 +22,7 @@
 #![warn(unused_extern_crates)]
 
 mod api;
+/// decryptor module
 pub mod decryptor;
 mod enactment_state;
 pub mod error;
@@ -42,7 +43,6 @@ use futures::prelude::*;
 pub use graph::base_pool::Limit as PoolLimit;
 pub use graph::{ChainApi, Options, Pool, Transaction, ValidatedTransaction};
 use graph::{ExtrinsicHash, IsValidator};
-use mp_starknet::block;
 use mp_starknet::transaction::types::EncryptedInvokeTransaction;
 use parking_lot::Mutex;
 use prometheus_endpoint::Registry as PrometheusRegistry;
@@ -362,22 +362,6 @@ pub enum RevalidationType {
     Full,
 }
 
-// /// trait for epool
-// pub trait EncryptedMemPool {
-//     /// Gets shared reference to the underlying pool.
-//     fn epool(&self) -> &Arc<Mutex<EncryptedPool>>;
-// }
-
-// impl<PoolApi, Block> EncryptedMemPool for BasicPool<PoolApi, Block>
-// where
-//     Block: BlockT,
-//     PoolApi: 'static + graph::ChainApi<Block = Block>,
-// {
-//     fn epool(&self) -> &Arc<Mutex<EncryptedPool>> {
-//         &(self.epool)
-//     }
-// }
-
 impl<PoolApi, Block> BasicPool<PoolApi, Block>
 where
     Block: BlockT,
@@ -469,7 +453,9 @@ where
     }
 }
 
+/// EncryptedTransactionPool inherit TransactionPool and add order for functions
 pub trait EncryptedTransactionPool: TransactionPool {
+    /// submit_one of TransactionPool trait and add order
     fn submit_one_with_order(
         &self,
         at: &BlockId<Self::Block>,
@@ -478,6 +464,7 @@ pub trait EncryptedTransactionPool: TransactionPool {
         order: u64,
     ) -> PoolFuture<TxHash<Self>, Self::Error>;
 
+    /// submit_at of TransactionPool trait and add order
     fn submit_at_with_order(
         &self,
         at: &BlockId<Self::Block>,

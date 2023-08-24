@@ -28,7 +28,7 @@ use mc_rpc_core::Felt;
 pub use mc_rpc_core::StarknetRpcApiServer;
 use mc_storage::OverrideHandle;
 use mc_transaction_pool::decryptor::Decryptor;
-use mc_transaction_pool::{BasicPool, ChainApi, EncryptedPool, EncryptedTransactionPool, Pool};
+use mc_transaction_pool::{ChainApi, EncryptedPool, EncryptedTransactionPool, Pool};
 use mp_starknet::crypto::hash::pedersen::PedersenHasher;
 use mp_starknet::crypto::merkle_patricia_tree::merkle_tree::ProofNode;
 use mp_starknet::execution::types::Felt252Wrapper;
