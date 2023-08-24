@@ -203,6 +203,7 @@ impl EncryptedPool {
     }
 
     pub fn get_order(&self, block_height: u64) -> u64 {
+
         match self.txs.get(&block_height) {
             Some(txs) => txs.get_order(),
             None => panic!("no txs on {}", block_height),
@@ -211,6 +212,7 @@ impl EncryptedPool {
 
     pub fn get_tx_cnt(&self, block_height: u64) -> u64 {
         match self.txs.get(&block_height) {
+
             Some(txs) => txs.get_tx_cnt(),
             None => 0,
         }
