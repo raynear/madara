@@ -259,7 +259,7 @@ impl<Hash: hash::Hash + Member + Serialize, Ex: std::fmt::Debug> BasePool<Hash, 
     /// other transactions in the pool.
     /// The latter contains transactions that have all the requirements satisfied and are
     /// ready to be included in the block.
-    pub fn import(&mut self, tx: Transaction<Hash, Ex>, order: Option<usize>) -> error::Result<Imported<Hash, Ex>> {
+    pub fn import(&mut self, tx: Transaction<Hash, Ex>, order: Option<u64>) -> error::Result<Imported<Hash, Ex>> {
         if self.is_imported(&tx.hash) {
             return Err(error::Error::AlreadyImported(Box::new(tx.hash)));
         }
@@ -293,7 +293,7 @@ impl<Hash: hash::Hash + Member + Serialize, Ex: std::fmt::Debug> BasePool<Hash, 
     fn import_to_ready(
         &mut self,
         tx: WaitingTransaction<Hash, Ex>,
-        order: Option<usize>,
+        order: Option<u64>,
     ) -> error::Result<Imported<Hash, Ex>> {
         let hash = tx.transaction.hash.clone();
         let mut promoted = vec![];

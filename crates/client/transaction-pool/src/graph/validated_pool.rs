@@ -147,7 +147,7 @@ impl<B: ChainApi> ValidatedPool<B> {
     pub fn submit(
         &self,
         txs: impl IntoIterator<Item = ValidatedTransactionFor<B>>,
-        order: Option<usize>,
+        order: Option<u64>,
     ) -> Vec<Result<ExtrinsicHash<B>, B::Error>> {
         match order {
             Some(order) => {
@@ -186,7 +186,7 @@ impl<B: ChainApi> ValidatedPool<B> {
     }
 
     /// Submit single pre-validated transaction to the pool.
-    fn submit_one(&self, tx: ValidatedTransactionFor<B>, order: Option<usize>) -> Result<ExtrinsicHash<B>, B::Error> {
+    fn submit_one(&self, tx: ValidatedTransactionFor<B>, order: Option<u64>) -> Result<ExtrinsicHash<B>, B::Error> {
         match tx {
             ValidatedTransaction::Valid(tx) => {
                 if !tx.propagate && !(self.is_validator.0)() {

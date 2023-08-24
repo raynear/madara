@@ -171,7 +171,7 @@ impl<B: ChainApi> Pool<B> {
         at: &BlockId<B::Block>,
         source: TransactionSource,
         xts: impl IntoIterator<Item = ExtrinsicFor<B>>,
-        order: Option<usize>,
+        order: Option<u64>,
     ) -> Result<Vec<Result<ExtrinsicHash<B>, B::Error>>, B::Error> {
         let xts = xts.into_iter().map(|xt| (source, xt));
         let validated_transactions = self.verify(at, xts, CheckBannedBeforeVerify::Yes).await?;
@@ -201,7 +201,7 @@ impl<B: ChainApi> Pool<B> {
         at: &BlockId<B::Block>,
         source: TransactionSource,
         xt: ExtrinsicFor<B>,
-        order: Option<usize>,
+        order: Option<u64>,
     ) -> Result<ExtrinsicHash<B>, B::Error> {
         match order {
             Some(order) => {

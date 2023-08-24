@@ -395,6 +395,24 @@ where
         deadline: time::Instant,
         block_size_limit: Option<usize>,
     ) -> Result<EndProposingReason, sp_blockchain::Error> {
+        if self.epool.clone().lock().is_enabled() {
+            // wait decryption
+            let block_height = self.parent_number.to_string().parse::<u64>().unwrap() + 1;
+
+            println!("wait tx decryption at {}", block_height);
+
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
+
+            loop {
+                let tx_cnt = self.epool.clone().lock().get_tx_cnt(block_height);
+                let dec_cnt = self.epool.clone().lock().get_decrypted_cnt(block_height);
+                if tx_cnt == dec_cnt {
+                    break;
+                }
+                interval.tick().await;
+            }
+        }
+
         // proceed with transactions
         // We calculate soft deadline used only in case we start skipping transactions.
         let now = (self.now)();
@@ -436,7 +454,7 @@ where
         loop {
             let len = self.epool.clone().lock().len(block_height);
             let cnt = self.epool.clone().lock().get_decrypted_cnt(block_height);
-            if len == cnt {
+            if len as u64 == cnt {
                 break;
             }
             interval.tick().await;

@@ -490,6 +490,12 @@ where
         &self,
         invoke_transaction: BroadcastedInvokeTransaction,
     ) -> RpcResult<InvokeTransactionResult> {
+        let epool = self.epool.clone();
+
+        if epool.lock().is_enabled() {
+            return Err(StarknetRpcApiError::EncryptedMempoolEnabled.into());
+        }
+
         let best_block_hash = self.client.info().best_hash;
         let invoke_tx = InvokeTransaction::try_from(invoke_transaction).map_err(|e| {
             error!("{e}");
@@ -521,6 +527,13 @@ where
         &self,
         deploy_account_transaction: BroadcastedDeployAccountTransaction,
     ) -> RpcResult<DeployAccountTransactionResult> {
+        let epool = self.epool.clone();
+        let block_height = self.current_block_number().unwrap();
+
+        if epool.clone().lock().is_enabled() {
+            epool.clone().lock().increase_order(block_height);
+        }
+
         let best_block_hash = self.client.info().best_hash;
         let chain_id = Felt252Wrapper(self.chain_id()?.0);
 
@@ -784,6 +797,13 @@ where
         &self,
         declare_transaction: BroadcastedDeclareTransaction,
     ) -> RpcResult<DeclareTransactionResult> {
+        let epool = self.epool.clone();
+        let block_height = self.current_block_number().unwrap();
+
+        if epool.clone().lock().is_enabled() {
+            epool.clone().lock().increase_order(block_height);
+        }
+
         let best_block_hash = self.client.info().best_hash;
         let chain_id = Felt252Wrapper(self.chain_id()?.0);
 
@@ -1083,7 +1103,13 @@ where
         let block_number = self.current_block_number().unwrap() + 1;
 
         let epool = self.epool.clone();
+
+        if !epool.clone().lock().is_enabled() {
+            return Err(StarknetRpcApiError::EncryptedMempoolDisabled.into());
+        }
+
         let order = epool.clone().lock().set(block_number, encrypted_invoke_transaction.clone());
+
         let chain_id = Felt252Wrapper(self.chain_id()?.0);
 
         let best_block_hash = self.client.info().best_hash;
@@ -1178,8 +1204,13 @@ where
         let epool = self.epool.clone();
         let block_height = decryption_info.block_number;
         let encrypted_invoke_transaction: EncryptedInvokeTransaction;
+        if !epool.clone().lock().is_enabled() {
+            return Err(StarknetRpcApiError::EncryptedMempoolDisabled.into());
+        }
+
         {
             let mut lock = epool.lock();
+
             encrypted_invoke_transaction = match lock.get(block_height, decryption_info.order) {
                 Ok(encrypted_invoke_transaction) => encrypted_invoke_transaction.clone(),
                 Err(e) => {
@@ -1267,7 +1298,7 @@ async fn submit_extrinsic_with_order<P, B>(
     pool: Arc<P>,
     best_block_hash: <B as BlockT>::Hash,
     extrinsic: <B as BlockT>::Extrinsic,
-    order: usize,
+    order: u64,
 ) -> Result<<P as TransactionPool>::Hash, StarknetRpcApiError>
 where
     P: EncryptedTransactionPool<Block = B> + 'static,
