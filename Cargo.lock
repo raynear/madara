@@ -5171,8 +5171,11 @@ dependencies = [
 name = "mc-block-proposer"
 version = "0.1.0"
 dependencies = [
+ "base64 0.21.2",
+ "dotenv",
  "futures",
  "futures-timer",
+ "hyper",
  "log",
  "mc-transaction-pool",
  "parity-scale-codec",
@@ -5183,6 +5186,7 @@ dependencies = [
  "sc-telemetry",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
+ "serde_json",
  "sp-api",
  "sp-blockchain",
  "sp-consensus",

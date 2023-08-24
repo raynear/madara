@@ -186,6 +186,13 @@ impl EncryptedPool {
             Some(txs) => txs.key_received[index],
         }
     }
+
+    pub fn get_encrypted_tx_pool(&self, block_height: u64) -> Vec<EncryptedInvokeTransaction> {
+        match self.txs.get(&block_height) {
+            None => [].to_vec(),
+            Some(txs) => txs.encrypted_pool.clone(),
+        }
+    }
 }
 
 /// Basic implementation of transaction pool that can be customized by providing PoolApi.
