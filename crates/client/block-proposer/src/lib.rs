@@ -33,7 +33,6 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus::{DisableProofRecording, ProofRecording, Proposal};
 use sp_core::traits::SpawnNamed;
 use sp_inherents::InherentData;
-use sp_runtime::offchain::http;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use sp_runtime::{Digest, Percent, SaturatedConversion};
 use tokio;
