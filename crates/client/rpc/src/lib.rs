@@ -68,8 +68,7 @@ use std::env;
 
 use dotenv::dotenv;
 use num_bigint::{BigInt, RandBigInt};
-use rand::rngs::StdRng;
-use rand::SeedableRng;
+use rand::rngs::OsRng;
 
 /// A Starknet RPC server for Madara
 pub struct Starknet<A: ChainApi, B: BlockT, BE, C, P, H> {
@@ -1168,7 +1167,7 @@ where
         let sequencer_private_key = env::var("SEQUENCER_PRIVATE_KEY").expect("SEQUENCER_PRIVATE_KEY must be set");
 
         // 2. Make random FieldElement for making k to sign
-        let mut rng = StdRng::seed_from_u64(42);
+        let mut rng = OsRng;
         let lower_bound = BigInt::from(0);
         let upper_bound = BigInt::parse_bytes(FieldElement::MAX.to_string().as_bytes(), 10).unwrap();
         let k: BigInt = rng.gen_bigint_range(&lower_bound, &upper_bound);
