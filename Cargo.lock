@@ -2496,6 +2496,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "dotenv"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77c90badedccf4105eca100756a0b1289e191f6fcbdadd3cee1d2f614f97da8f"
+
+[[package]]
 name = "downcast"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5165,8 +5171,11 @@ dependencies = [
 name = "mc-block-proposer"
 version = "0.1.0"
 dependencies = [
+ "base64 0.21.2",
+ "dotenv",
  "futures",
  "futures-timer",
+ "hyper",
  "log",
  "mc-transaction-pool",
  "parity-scale-codec",
@@ -5177,6 +5186,7 @@ dependencies = [
  "sc-telemetry",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
+ "serde_json",
  "sp-api",
  "sp-blockchain",
  "sp-consensus",
@@ -5227,6 +5237,7 @@ name = "mc-rpc"
 version = "0.1.0"
 dependencies = [
  "blockifier",
+ "dotenv",
  "encryptor",
  "frame-support",
  "frame-system",
@@ -5238,9 +5249,11 @@ dependencies = [
  "mc-storage",
  "mc-transaction-pool",
  "mp-starknet",
+ "num-bigint",
  "pallet-starknet",
  "parking_lot 0.12.1",
  "pretty_assertions",
+ "rand 0.8.5",
  "rstest",
  "sc-client-api",
  "sc-network-sync",
