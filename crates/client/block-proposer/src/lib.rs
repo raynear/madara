@@ -5,6 +5,7 @@
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
 use std::{env, time};
 
 use base64::engine::general_purpose;
@@ -463,17 +464,16 @@ where
         let encrypted_tx_pool_size: usize = self.epool.lock().len(block_height);
 
         if encrypted_tx_pool_size > 0 {
-            let encrypted_tx_pool = self.epool.clone().lock().get_encrypted_tx_pool(block_height);
+            let encrypted_invoke_transactions = self.epool.clone().lock().get_encrypted_tx_pool(block_height);
+            self.epool.clone().lock().init_tx_pool(block_height);
 
-            let data_for_da: String = serde_json::to_string(&encrypted_tx_pool).unwrap();
+            let data_for_da: String = serde_json::to_string(&encrypted_invoke_transactions).unwrap();
             println!("this is the : {:?}", data_for_da);
             let encoded_data_for_da = encode_data_to_base64(&data_for_da);
             println!("this is the encoded_data_for_da: {:?}", encoded_data_for_da);
             let da_block_height = submit_to_da(&encoded_data_for_da).await;
             println!("this is the block_height: {}", da_block_height);
         }
-
-        self.epool.clone().lock().init_tx_pool(block_height);
 
         // input pool data to DA
         let end_reason = loop {
@@ -1085,14 +1085,26 @@ async fn submit_to_da(data: &str) -> String {
         "id": 1,
     });
 
+    println!("stompesi - rpc_request: {:?}", rpc_request);
+
     let uri = std::env::var("da_uri").unwrap_or(da_host.into());
+
+    println!("stompesi - uri: {:?}", uri);
+    println!("stompesi - da_auth: {:?}", da_auth);
+
     // Token should be removed from code.
     let req = Request::post(uri.as_str())
         .header(AUTHORIZATION, HeaderValue::from_str(da_auth.as_str()).unwrap())
         .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
         .body(Body::from(rpc_request.to_string()))
         .unwrap();
-    let resp = client.request(req).await.unwrap();
+    let response_future = client.request(req);
+
+    let resp = tokio::time::timeout(Duration::from_secs(100), response_future)
+        .await
+        .map_err(|_| "Request timed out")
+        .unwrap()
+        .unwrap();
 
     let response_body = hyper::body::to_bytes(resp.into_body()).await.unwrap();
     let parsed: Value = serde_json::from_slice(&response_body).unwrap();
