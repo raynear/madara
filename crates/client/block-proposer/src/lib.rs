@@ -449,34 +449,34 @@ where
             let block_height = self.parent_number.to_string().parse::<u64>().unwrap() + 1;
 
             {
-                // if lock.exist(block_height) {
-
                 let mut lock = epool.lock();
-                println!("close on {}", block_height);
-                lock.close(block_height);
+                if lock.exist(block_height) {
+                    println!("close on {}", block_height);
+                    lock.close(block_height);
 
-                let mut txs = lock.get_txs(block_height).unwrap();
+                    let mut txs = lock.get_txs(block_height).unwrap();
 
-                let best_block_hash = self.client.info().best_hash;
+                    let best_block_hash = self.client.info().best_hash;
 
-                let temporary_pool = txs.get_temporary_pool();
-                for (order, transaction) in temporary_pool {
-                    let extrinsic = self
-                        .client
-                        .runtime_api()
-                        .convert_transaction(
-                            best_block_hash,
-                            transaction,
-                            mp_starknet::transaction::types::TxType::Invoke,
-                        )
-                        .unwrap()
-                        .unwrap();
-                    self.transaction_pool.clone().submit_one_with_order(
-                        &SPBlockId::hash(best_block_hash),
-                        TransactionSource::External,
-                        extrinsic,
-                        order,
-                    );
+                    let temporary_pool = txs.get_temporary_pool();
+                    for (order, transaction) in temporary_pool {
+                        let extrinsic = self
+                            .client
+                            .runtime_api()
+                            .convert_transaction(
+                                best_block_hash,
+                                transaction,
+                                mp_starknet::transaction::types::TxType::Invoke,
+                            )
+                            .expect("convert_transaction")
+                            .expect("runtime_api");
+                        self.transaction_pool.clone().submit_one_with_order(
+                            &SPBlockId::hash(best_block_hash),
+                            TransactionSource::External,
+                            extrinsic,
+                            order,
+                        );
+                    }
                 }
             }
 
@@ -492,7 +492,7 @@ where
                         let tx_cnt = lock.get_tx_cnt(block_height);
                         let dec_cnt = lock.get_decrypted_cnt(block_height);
                         let closed = lock.is_closed(block_height).unwrap();
-                        println!("{} : {} == {} | {}", block_height, tx_cnt, dec_cnt, closed);
+                        // println!("{} : {} == {} | {}", block_height, tx_cnt, dec_cnt, closed);
                         if tx_cnt == dec_cnt {
                             break;
                         }

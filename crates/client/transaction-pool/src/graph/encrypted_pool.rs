@@ -68,15 +68,15 @@ impl Txs {
 
     /// is close
     pub fn is_closed(&self) -> bool {
-        println!("is closed {}", self.closed);
+        // println!("is closed {}", self.closed);
         self.closed
     }
 
     /// close
     pub fn close(&mut self) {
-        println!("close!!");
+        // println!("close!!");
         self.closed = true;
-        println!("closed? {}", self.closed);
+        // println!("closed? {}", self.closed);
     }
 
     ///
