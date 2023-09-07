@@ -22,7 +22,7 @@ use madara_runtime::UncheckedExtrinsic;
 use mc_rpc::{convert_transaction, submit_extrinsic_with_order};
 use mc_transaction_pool::{EncryptedPool, EncryptedTransactionPool};
 use mp_starknet::transaction::types::{InvokeTransaction, Transaction as MPTransaction, TxType};
-use pallet_starknet::runtime_api::StarknetRuntimeApi;
+use pallet_starknet::runtime_api::{ConvertTransactionRuntimeApi, StarknetRuntimeApi};
 use parking_lot::Mutex;
 use prometheus_endpoint::Registry as PrometheusRegistry;
 use sc_block_builder::{BlockBuilderApi, BlockBuilderProvider};
@@ -38,7 +38,7 @@ use sp_consensus::{DisableProofRecording, ProofRecording, Proposal};
 use sp_core::traits::SpawnNamed;
 use sp_inherents::InherentData;
 use sp_runtime::generic::BlockId as SPBlockId;
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
+use sp_runtime::traits::{Block as BlockT, Convert, Header as HeaderT};
 use sp_runtime::{Digest, DispatchError, Percent, SaturatedConversion};
 use tokio;
 
@@ -182,7 +182,10 @@ where
     B: backend::Backend<Block> + Send + Sync + 'static,
     Block: BlockT,
     C: BlockBuilderProvider<B, Block, C> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
-    C::Api: ApiExt<Block, StateBackend = backend::StateBackendFor<B, Block>> + BlockBuilderApi<Block>,
+    C::Api: ApiExt<Block, StateBackend = backend::StateBackendFor<B, Block>>
+        + BlockBuilderApi<Block>
+        + StarknetRuntimeApi<Block>
+        + ConvertTransactionRuntimeApi<Block>,
     PR: ProofRecording,
 {
     type CreateProposer = future::Ready<Result<Self::Proposer, Self::Error>>;
@@ -215,7 +218,10 @@ where
     B: backend::Backend<Block> + Send + Sync + 'static,
     Block: BlockT,
     C: BlockBuilderProvider<B, Block, C> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
-    C::Api: ApiExt<Block, StateBackend = backend::StateBackendFor<B, Block>> + BlockBuilderApi<Block>,
+    C::Api: ApiExt<Block, StateBackend = backend::StateBackendFor<B, Block>>
+        + BlockBuilderApi<Block>
+        + StarknetRuntimeApi<Block>
+        + ConvertTransactionRuntimeApi<Block>,
     PR: ProofRecording,
 {
     type Transaction = backend::TransactionFor<B, Block>;
@@ -276,7 +282,10 @@ where
     B: backend::Backend<Block> + Send + Sync + 'static,
     Block: BlockT,
     C: BlockBuilderProvider<B, Block, C> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
-    C::Api: ApiExt<Block, StateBackend = backend::StateBackendFor<B, Block>> + BlockBuilderApi<Block>,
+    C::Api: ApiExt<Block, StateBackend = backend::StateBackendFor<B, Block>>
+        + BlockBuilderApi<Block>
+        + StarknetRuntimeApi<Block>
+        + ConvertTransactionRuntimeApi<Block>,
     PR: ProofRecording,
 {
     /// Propose a new block.
@@ -450,31 +459,24 @@ where
 
                 let best_block_hash = self.client.info().best_hash;
 
-                // let chain_id = self.client.runtime_api().chain_id(best_block_hash).unwrap();
-
                 let temporary_pool = txs.get_temporary_pool();
                 for (order, transaction) in temporary_pool {
-                    // let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
-
-                    // let extrinsic =
-                    //     convert_transaction(self.client.clone(), best_block_hash, transaction.clone(),
-                    // TxType::Invoke)         .await
-                    //         .expect("Failed to submit extrinsic");
-                    let tx = InvokeTransaction::try_from(transaction)
-                        .map_err(|_| DispatchError::Other("failed to convert transaction to InvokeTransaction"))
+                    let extrinsic = self
+                        .client
+                        .runtime_api()
+                        .convert_transaction(
+                            best_block_hash,
+                            transaction,
+                            mp_starknet::transaction::types::TxType::Invoke,
+                        )
+                        .unwrap()
                         .unwrap();
-                    let call = pallet_starknet::Call::invoke { transaction: tx };
-                    let extrinsic = UncheckedExtrinsic::new_unsigned(call.into());
                     self.transaction_pool.clone().submit_one_with_order(
                         &SPBlockId::hash(best_block_hash),
                         TransactionSource::External,
                         extrinsic,
                         order,
                     );
-
-                    // submit_extrinsic_with_order(self.transaction_pool.clone(), best_block_hash,
-                    // extrinsic, order)     .await
-                    //     .unwrap();
                 }
             }
 
