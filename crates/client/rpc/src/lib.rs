@@ -29,6 +29,7 @@ pub use mc_rpc_core::StarknetRpcApiServer;
 use mc_storage::OverrideHandle;
 use mc_transaction_pool::decryptor::Decryptor;
 use mc_transaction_pool::{ChainApi, EncryptedPool, EncryptedTransactionPool, Pool};
+use mp_starknet::block::Block;
 use mp_starknet::crypto::merkle_patricia_tree::merkle_tree::ProofNode;
 use mp_starknet::execution::types::Felt252Wrapper;
 use mp_starknet::traits::hash::HasherT;
@@ -1042,6 +1043,9 @@ where
         Ok(RpcGetProofOutput { state_commitment, class_commitment, contract_proof, contract_data: Some(contract_data) })
     }
 
+    // pub fn a
+
+    ///
     fn encrypt_invoke_transaction(
         &self,
         invoke_transaction: BroadcastedInvokeTransaction,
@@ -1099,12 +1103,31 @@ where
         &self,
         encrypted_invoke_transaction: EncryptedInvokeTransaction,
     ) -> RpcResult<EncryptedMempoolTransactionResult> {
-        let block_number = self.current_block_number().unwrap() + 1;
+        let mut block_number = self.current_block_number().unwrap() + 1;
 
         let epool = self.epool.clone();
 
-        if !epool.clone().lock().is_enabled() {
-            return Err(StarknetRpcApiError::EncryptedMempoolDisabled.into());
+        {
+            let mut lock = epool.lock();
+
+            if !lock.is_enabled() {
+                return Err(StarknetRpcApiError::EncryptedMempoolDisabled.into());
+            }
+
+            if lock.exist(block_number) {
+                let txs = lock.get_txs(block_number).unwrap();
+
+                // let closed = txs.is_closed();
+                let closed = lock.is_closed(block_number).unwrap();
+                println!("{} : closed? {}", block_number, closed);
+
+                if closed {
+                    block_number += 1;
+                    println!("closed!, push at {}", block_number);
+                } else {
+                    println!("still open");
+                }
+            }
         }
 
         let order = epool.clone().lock().set(block_number, encrypted_invoke_transaction.clone());
@@ -1121,33 +1144,59 @@ where
 
             let encrypted_invoke_transaction: EncryptedInvokeTransaction;
             {
-                // let lock = epool.lock();
-                let did_received_key = epool.clone().lock().get_key_received(block_number, order);
+                let mut lock = epool.lock();
+                let did_received_key = lock.get_key_received(block_number, order);
 
                 if did_received_key == true {
                     println!("Received key");
                     return;
                 }
                 println!("Not received key");
-                encrypted_invoke_transaction = epool.clone().lock().get(block_number, order).unwrap().clone();
+                encrypted_invoke_transaction = lock.get(block_number, order).unwrap().clone();
             }
 
             let decryptor = Decryptor::new();
             let invoke_tx = decryptor.decrypt_encrypted_invoke_transaction(encrypted_invoke_transaction, None).await;
 
             {
-                // let lock = epool.lock();
-                let did_received_key = epool.clone().lock().get_key_received(block_number, order);
+                let mut lock = epool.lock();
+                let did_received_key = lock.get_key_received(block_number, order);
 
                 if did_received_key == true {
                     println!("Received key");
                     return;
                 }
-            }
 
-            {
-                let mut lock = epool.lock();
                 lock.increase_decrypted_cnt(block_number);
+
+                println!("prev closed? {}", block_number - 1);
+                let previous_closed = match lock.is_closed(block_number - 1) {
+                    Ok(closed) => {
+                        println!("!!!!{}", closed);
+                        closed
+                    }
+                    Err(e) => {
+                        println!("qwerty");
+                        false
+                    }
+                };
+
+                if previous_closed {
+                    let mut txs = match lock.get_txs(block_number) {
+                        Ok(txs) => txs.clone(),
+                        Err(e) => panic!("no case of this"),
+                    };
+
+                    // let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
+                    // let extrinsic = convert_transaction(client, best_block_hash, transaction.clone(), TxType::Invoke)
+                    //     .await
+                    //     .expect("Failed to submit extrinsic");
+
+                    let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
+                    println!("closed.. push on temporary pool");
+                    txs.add_tx_to_temporary_pool(order, transaction);
+                    return;
+                }
             }
 
             let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
@@ -1193,6 +1242,26 @@ where
             signature: bounded_vec!(signature.r.into(), signature.s.into(), signature.v.into()),
         })
     }
+
+    // ///
+    // async fn add_invoke_transaction_with_order(
+    //     &self,
+    //     invoke_tx: InvokeTransaction,
+    //     order: u64,
+    // ) -> RpcResult<InvokeTransactionResult> {
+    //     let best_block_hash = self.client.info().best_hash;
+    //     let chain_id = Felt252Wrapper(self.chain_id()?.0);
+
+    //     let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
+
+    //     let extrinsic =
+    //         convert_transaction(self.client.clone(), best_block_hash, transaction.clone(),
+    // TxType::Invoke).await?;
+
+    //     submit_extrinsic_with_order(self.pool.clone(), best_block_hash, extrinsic, order).await?;
+
+    //     Ok(InvokeTransactionResult { transaction_hash: transaction.hash.into() })
+    // }
 
     async fn provide_decryption_key(&self, decryption_info: DecryptionInfo) -> RpcResult<ProvideDecryptionKeyResult> {
         let sequencer_private_key = env::var("SEQUENCER_PRIVATE_KEY").expect("SEQUENCER_PRIVATE_KEY must be set");
@@ -1293,7 +1362,8 @@ where
     })
 }
 
-async fn submit_extrinsic_with_order<P, B>(
+#[no_mangle]
+pub async fn submit_extrinsic_with_order<P, B>(
     pool: Arc<P>,
     best_block_hash: <B as BlockT>::Hash,
     extrinsic: <B as BlockT>::Extrinsic,
@@ -1312,7 +1382,7 @@ where
     })
 }
 
-async fn convert_transaction<C, B>(
+pub async fn convert_transaction<C, B>(
     client: Arc<C>,
     best_block_hash: <B as BlockT>::Hash,
     transaction: MPTransaction,

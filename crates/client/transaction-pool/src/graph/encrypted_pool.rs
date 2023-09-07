@@ -4,7 +4,16 @@
 
 use std::collections::HashMap;
 
-use mp_starknet::transaction::types::EncryptedInvokeTransaction;
+use mp_starknet::transaction::types::{EncryptedInvokeTransaction, Transaction};
+// use sp_runtime::traits::Block as BlockT;
+
+// pub struct NewBlock(Box<dyn BlockT>);
+
+// impl NewBlock {
+//     fn new<B: BlockT>(block: B) -> Self {
+//         Self(Box::new(block))
+//     }
+// }
 
 #[derive(Debug, Clone, Default)]
 /// Txs struct
@@ -16,18 +25,29 @@ use mp_starknet::transaction::types::EncryptedInvokeTransaction;
 pub struct Txs {
     /// store encrypted tx
     encrypted_pool: HashMap<u64, EncryptedInvokeTransaction>,
+    /// store temporary encrypted tx
+    temporary_pool: Vec<(u64, Transaction)>,
     /// store specific order's key receivement.
     key_received: HashMap<u64, bool>,
     /// decrypted tx count
     decrypted_cnt: u64,
     /// current order
     order: u64,
+    /// close flag
+    closed: bool,
 }
 
 impl Txs {
     /// new
     pub fn new() -> Self {
-        Default::default()
+        Self {
+            encrypted_pool: HashMap::default(),
+            temporary_pool: Vec::default(),
+            key_received: HashMap::default(),
+            decrypted_cnt: 0,
+            order: 0,
+            closed: false,
+        }
     }
 
     /// add encrypted tx on Txs
@@ -44,6 +64,42 @@ impl Txs {
             Some(item) => Ok(item.clone()),
             None => Err("get not exist tx from vector"),
         }
+    }
+
+    /// is close
+    pub fn is_closed(&self) -> bool {
+        println!("is closed {}", self.closed);
+        self.closed
+    }
+
+    /// close
+    pub fn close(&mut self) {
+        println!("close!!");
+        self.closed = true;
+        println!("closed? {}", self.closed);
+    }
+
+    ///
+    pub fn add_tx_to_temporary_pool(&mut self, order: u64, tx: Transaction) {
+        self.temporary_pool.push((order, tx));
+    }
+
+    ///
+    pub fn get_tx_from_temporary_pool(&mut self, index: usize) -> (u64, Transaction) {
+        match self.temporary_pool.get(index) {
+            Some(tx) => tx.clone(),
+            None => panic!("aaaaaaak"),
+        }
+    }
+
+    ///
+    pub fn temporary_pool_len(&mut self) -> usize {
+        self.temporary_pool.len()
+    }
+
+    ///
+    pub fn get_temporary_pool(&mut self) -> Vec<(u64, Transaction)> {
+        self.temporary_pool.clone()
     }
 
     /// increase order
@@ -126,13 +182,27 @@ impl EncryptedPool {
 
     /// new epool
     pub fn new() -> Self {
-        Default::default()
+        Self { txs: HashMap::default(), enabled: true }
     }
 
     /// add new Txs for block_height
     pub fn new_block(&mut self, block_height: u64) -> Txs {
         self.txs.insert(block_height, Txs::new());
         self.txs.get(&block_height).unwrap().clone()
+    }
+
+    pub fn exist(&self, block_height: u64) -> bool {
+        match self.txs.get(&block_height) {
+            Some(_) => true,
+            None => false,
+        }
+    }
+
+    pub fn get_txs(&self, block_height: u64) -> Result<Txs, &str> {
+        match self.txs.get(&block_height) {
+            Some(txs) => Ok(txs.clone()),
+            None => Err("get not exist tx from map"),
+        }
     }
 
     /// add encrypted tx by block_height
@@ -158,6 +228,51 @@ impl EncryptedPool {
                 None => Err("get not exist tx from map"),
             },
             None => Err("get not exist tx from map"),
+        }
+    }
+
+    ///
+    pub fn add_tx_to_temporary_pool(&mut self, block_height: u64, order: u64, tx: Transaction) -> Result<(), &str> {
+        match self.txs.get_mut(&block_height) {
+            Some(txs) => Ok(txs.clone().add_tx_to_temporary_pool(order, tx)),
+            None => Err("add_tx_to_temporary_pool not exist tx from map"),
+        }
+    }
+
+    ///
+    pub fn get_tx_from_temporary_pool(&mut self, block_height: u64, index: usize) -> Result<(u64, Transaction), &str> {
+        match self.txs.get(&block_height) {
+            Some(txs) => Ok(txs.clone().get_tx_from_temporary_pool(index)),
+            None => Err("get_tx_to_temporary_pool not exist tx from map"),
+        }
+    }
+
+    ///
+    pub fn temporary_pool_len(&mut self, block_height: u64) -> Result<usize, &str> {
+        match self.txs.get(&block_height) {
+            Some(txs) => Ok(txs.clone().temporary_pool_len()),
+            None => Err("temporary_pool_len not exist tx from map"),
+        }
+    }
+
+    /// is close
+    pub fn is_closed(&self, block_height: u64) -> Result<bool, &str> {
+        match self.txs.get(&block_height) {
+            Some(txs) => Ok(txs.clone().is_closed()),
+            None => Err("is_closed not exist tx from map"),
+        }
+    }
+
+    /// close
+    pub fn close(&mut self, block_height: u64) {
+        match self.txs.get_mut(&block_height) {
+            Some(txs) => {
+                println!("close!");
+                txs.close();
+            }
+            None => {
+                println!("not exist? cannot close")
+            }
         }
     }
 
