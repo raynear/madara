@@ -267,7 +267,7 @@ impl EncryptedPool {
     pub fn close(&mut self, block_height: u64) {
         match self.txs.get_mut(&block_height) {
             Some(txs) => {
-                println!("close!");
+                // println!("close!");
                 txs.close();
             }
             None => {

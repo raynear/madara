@@ -1169,14 +1169,17 @@ where
 
                 lock.increase_decrypted_cnt(block_number);
 
-                println!("prev closed? {}", block_number - 1);
                 let previous_closed = match lock.is_closed(block_number - 1) {
                     Ok(closed) => {
-                        println!("!!!!{}", closed);
+                        if closed {
+                            println!("{} is closed", block_number - 1);
+                        } else {
+                            println!("{} is not closed", block_number - 1);
+                        };
                         closed
                     }
                     Err(e) => {
-                        println!("qwerty");
+                        println!("no state for {}", block_number - 1);
                         false
                     }
                 };
@@ -1193,7 +1196,7 @@ where
                     //     .expect("Failed to submit extrinsic");
 
                     let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
-                    println!("closed.. push on temporary pool");
+                    println!("{} is closed.. push on temporary pool of {}", block_number - 1, block_number);
                     txs.add_tx_to_temporary_pool(order, transaction);
                     return;
                 }
