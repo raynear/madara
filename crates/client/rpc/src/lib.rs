@@ -29,7 +29,6 @@ pub use mc_rpc_core::StarknetRpcApiServer;
 use mc_storage::OverrideHandle;
 use mc_transaction_pool::decryptor::Decryptor;
 use mc_transaction_pool::{ChainApi, EncryptedPool, EncryptedTransactionPool, Pool};
-use mp_starknet::block::Block;
 use mp_starknet::crypto::merkle_patricia_tree::merkle_tree::ProofNode;
 use mp_starknet::execution::types::Felt252Wrapper;
 use mp_starknet::traits::hash::HasherT;
@@ -1108,7 +1107,7 @@ where
         let epool = self.epool.clone();
 
         {
-            let mut lock = epool.lock();
+            let lock = epool.lock();
 
             if !lock.is_enabled() {
                 return Err(StarknetRpcApiError::EncryptedMempoolDisabled.into());
@@ -1365,7 +1364,6 @@ where
     })
 }
 
-#[no_mangle]
 pub async fn submit_extrinsic_with_order<P, B>(
     pool: Arc<P>,
     best_block_hash: <B as BlockT>::Hash,

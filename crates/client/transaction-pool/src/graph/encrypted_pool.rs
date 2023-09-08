@@ -79,12 +79,12 @@ impl Txs {
         // println!("closed? {}", self.closed);
     }
 
-    ///
+    /// add tx to temporary pool
     pub fn add_tx_to_temporary_pool(&mut self, order: u64, tx: Transaction) {
         self.temporary_pool.push((order, tx));
     }
 
-    ///
+    /// get tx from temporary pool
     pub fn get_tx_from_temporary_pool(&mut self, index: usize) -> (u64, Transaction) {
         match self.temporary_pool.get(index) {
             Some(tx) => tx.clone(),
@@ -92,13 +92,13 @@ impl Txs {
         }
     }
 
-    ///
+    /// get temporary pool length
     pub fn temporary_pool_len(&mut self) -> usize {
         self.temporary_pool.len()
     }
 
-    ///
-    pub fn get_temporary_pool(&mut self) -> Vec<(u64, Transaction)> {
+    /// get temporary pool
+    pub fn get_temporary_pool(&self) -> Vec<(u64, Transaction)> {
         self.temporary_pool.clone()
     }
 
@@ -191,6 +191,7 @@ impl EncryptedPool {
         self.txs.get(&block_height).unwrap().clone()
     }
 
+    /// txs exist
     pub fn exist(&self, block_height: u64) -> bool {
         match self.txs.get(&block_height) {
             Some(_) => true,
@@ -198,6 +199,7 @@ impl EncryptedPool {
         }
     }
 
+    /// get txs
     pub fn get_txs(&self, block_height: u64) -> Result<Txs, &str> {
         match self.txs.get(&block_height) {
             Some(txs) => Ok(txs.clone()),
@@ -231,7 +233,7 @@ impl EncryptedPool {
         }
     }
 
-    ///
+    /// block is making so add tx to temporary pool
     pub fn add_tx_to_temporary_pool(&mut self, block_height: u64, order: u64, tx: Transaction) -> Result<(), &str> {
         match self.txs.get_mut(&block_height) {
             Some(txs) => Ok(txs.clone().add_tx_to_temporary_pool(order, tx)),
@@ -239,7 +241,7 @@ impl EncryptedPool {
         }
     }
 
-    ///
+    /// get tx from temporary_pool before making block
     pub fn get_tx_from_temporary_pool(&mut self, block_height: u64, index: usize) -> Result<(u64, Transaction), &str> {
         match self.txs.get(&block_height) {
             Some(txs) => Ok(txs.clone().get_tx_from_temporary_pool(index)),
@@ -247,13 +249,13 @@ impl EncryptedPool {
         }
     }
 
-    ///
-    pub fn temporary_pool_len(&mut self, block_height: u64) -> Result<usize, &str> {
-        match self.txs.get(&block_height) {
-            Some(txs) => Ok(txs.clone().temporary_pool_len()),
-            None => Err("temporary_pool_len not exist tx from map"),
-        }
-    }
+    // /// get temporary poll length
+    // pub fn temporary_pool_len(&mut self, block_height: u64) -> Result<usize, &str> {
+    //     match self.txs.get(&block_height) {
+    //         Some(txs) => Ok(txs.clone().temporary_pool_len()),
+    //         None => Err("temporary_pool_len not exist tx from map"),
+    //     }
+    // }
 
     /// is close
     pub fn is_closed(&self, block_height: u64) -> Result<bool, &str> {

@@ -18,17 +18,15 @@ use futures::{future, select};
 use hyper::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use hyper::{Body, Client, Request};
 use log::{debug, error, info, trace, warn};
-use madara_runtime::UncheckedExtrinsic;
-use mc_rpc::{convert_transaction, submit_extrinsic_with_order};
 use mc_transaction_pool::{EncryptedPool, EncryptedTransactionPool};
-use mp_starknet::transaction::types::{InvokeTransaction, Transaction as MPTransaction, TxType};
+use mp_starknet::transaction::types::{Transaction as MPTransaction, TxType};
 use pallet_starknet::runtime_api::{ConvertTransactionRuntimeApi, StarknetRuntimeApi};
 use parking_lot::Mutex;
 use prometheus_endpoint::Registry as PrometheusRegistry;
 use sc_block_builder::{BlockBuilderApi, BlockBuilderProvider};
 use sc_client_api::backend;
 use sc_proposer_metrics::{EndProposingReason, MetricsLink as PrometheusMetrics};
-use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TransactionSource};
+use sc_transaction_pool_api::{InPoolTransaction, TransactionSource};
 use serde_json::{json, Value};
 use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_blockchain::ApplyExtrinsicFailed::Validity;
@@ -38,8 +36,8 @@ use sp_consensus::{DisableProofRecording, ProofRecording, Proposal};
 use sp_core::traits::SpawnNamed;
 use sp_inherents::InherentData;
 use sp_runtime::generic::BlockId as SPBlockId;
-use sp_runtime::traits::{Block as BlockT, Convert, Header as HeaderT};
-use sp_runtime::{Digest, DispatchError, Percent, SaturatedConversion};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
+use sp_runtime::{Digest, Percent, SaturatedConversion};
 use tokio;
 
 /// Default block size limit in bytes used by [`Proposer`].
@@ -431,7 +429,7 @@ where
                     println!("close on {}", block_height);
                     lock.close(block_height);
 
-                    let mut txs = lock.get_txs(block_height).unwrap();
+                    let txs = lock.get_txs(block_height).unwrap();
 
                     temporary_pool = txs.get_temporary_pool();
                 }
@@ -442,10 +440,11 @@ where
                 let extrinsic = self
                     .client
                     .runtime_api()
-                    .convert_transaction(best_block_hash, transaction, mp_starknet::transaction::types::TxType::Invoke)
+                    .convert_transaction(best_block_hash, transaction, TxType::Invoke)
                     .expect("convert_transaction")
                     .expect("runtime_api");
-                self.transaction_pool
+                let _ = self
+                    .transaction_pool
                     .clone()
                     .submit_one_with_order(
                         &SPBlockId::hash(best_block_hash),
@@ -464,7 +463,7 @@ where
                     if lock.exist(block_height) {
                         let tx_cnt = lock.get_tx_cnt(block_height);
                         let dec_cnt = lock.get_decrypted_cnt(block_height);
-                        let closed = lock.is_closed(block_height).unwrap();
+                        // let closed = lock.is_closed(block_height).unwrap();
                         if tx_cnt == dec_cnt {
                             break;
                         }
