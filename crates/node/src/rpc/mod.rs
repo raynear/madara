@@ -14,7 +14,6 @@ use madara_runtime::opaque::Block;
 use madara_runtime::{AccountId, Hash, Index};
 use mc_transaction_pool::{ChainApi, EncryptedPool, EncryptedTransactionPool, Pool};
 use pallet_starknet::runtime_api::StarknetRuntimeApi;
-use parking_lot::Mutex;
 use sc_client_api::{Backend, StorageProvider};
 use sc_consensus_manual_seal::rpc::EngineCommand;
 pub use sc_rpc_api::DenyUnsafe;
@@ -22,6 +21,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
 pub use starknet::StarknetDeps;
+use tokio::sync::Mutex;
 
 /// Full client dependencies.
 pub struct FullDeps<A: ChainApi, C, P> {

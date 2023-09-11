@@ -12,7 +12,7 @@ use madara_runtime::{self, Hash, RuntimeApi};
 use mc_block_proposer::ProposerFactory;
 use mc_mapping_sync::MappingSyncWorker;
 use mc_storage::overrides_handle;
-use mc_transaction_pool::FullPool;
+use mc_transaction_pool::{EncryptedPool, FullPool};
 use mp_starknet::sequencer_address::{
     InherentDataProvider as SeqAddrInherentDataProvider, DEFAULT_SEQUENCER_ADDRESS, SEQ_ADDR_STORAGE_KEY,
 };
@@ -32,6 +32,7 @@ use sp_consensus_aura::sr25519::AuthorityPair as AuraPair;
 use sp_offchain::STORAGE_PREFIX;
 use sp_runtime::traits::BlakeTwo256;
 use sp_trie::PrefixedMemoryDB;
+use tokio::sync::Mutex;
 
 use crate::cli::Sealing;
 use crate::genesis_block::MadaraGenesisBlockBuilder;
@@ -243,6 +244,14 @@ where
     ))
 }
 
+pub async fn enable_epool(epool: Arc<Mutex<EncryptedPool>>) {
+    epool.lock().await.enable_encrypted_mempool();
+}
+
+pub async fn disable_epool(epool: Arc<Mutex<EncryptedPool>>) {
+    epool.lock().await.disable_encrypted_mempool();
+}
+
 /// Builds a new service for a full client.
 pub fn new_full(
     config: Configuration,
@@ -263,10 +272,11 @@ pub fn new_full(
         other: (block_import, grandpa_link, mut telemetry, madara_backend),
     } = new_partial(&config, build_import_queue)?;
 
+    // TODO: check lock await
     if encrypted_mempool {
-        transaction_pool.epool().clone().lock().enable_encrypted_mempool();
+        enable_epool(transaction_pool.epool().clone());
     } else {
-        transaction_pool.epool().clone().lock().disable_encrypted_mempool();
+        disable_epool(transaction_pool.epool().clone());
     }
 
     let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);

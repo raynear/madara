@@ -21,7 +21,6 @@ use log::{debug, error, info, trace, warn};
 use mc_transaction_pool::{EncryptedPool, EncryptedTransactionPool};
 use mp_starknet::transaction::types::{Transaction as MPTransaction, TxType};
 use pallet_starknet::runtime_api::{ConvertTransactionRuntimeApi, StarknetRuntimeApi};
-use parking_lot::Mutex;
 use prometheus_endpoint::Registry as PrometheusRegistry;
 use sc_block_builder::{BlockBuilderApi, BlockBuilderProvider};
 use sc_client_api::backend;
@@ -39,6 +38,7 @@ use sp_runtime::generic::BlockId as SPBlockId;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use sp_runtime::{Digest, Percent, SaturatedConversion};
 use tokio;
+use tokio::sync::Mutex;
 
 /// Default block size limit in bytes used by [`Proposer`].
 ///
@@ -414,7 +414,7 @@ where
 
         let mut enabled = false;
         {
-            let lock = epool.lock();
+            let lock = epool.lock().await;
             enabled = lock.is_enabled();
         }
 
@@ -424,7 +424,7 @@ where
 
             let mut temporary_pool: Vec<(u64, MPTransaction)> = vec![];
             {
-                let mut lock = epool.lock();
+                let mut lock = epool.lock().await;
                 if lock.exist(block_height) {
                     println!("close on {}", block_height);
                     lock.close(block_height);
@@ -459,7 +459,7 @@ where
 
             loop {
                 {
-                    let lock = epool.lock();
+                    let lock = epool.lock().await;
                     if lock.exist(block_height) {
                         let tx_cnt = lock.get_tx_cnt(block_height);
                         let dec_cnt = lock.get_decrypted_cnt(block_height);
@@ -506,7 +506,7 @@ where
         let mut transaction_pushed = false;
 
         {
-            let mut lock = epool.lock();
+            let mut lock = epool.lock().await;
             if lock.is_enabled() {
                 let block_height = self.parent_number.to_string().parse::<u64>().unwrap() + 1;
                 let encrypted_tx_pool_size: usize = lock.len(block_height);
@@ -658,7 +658,6 @@ where
 mod tests {
 
     use futures::executor::block_on;
-    use parking_lot::Mutex;
     use sc_client_api::Backend;
     use sc_transaction_pool::BasicPool;
     use sc_transaction_pool_api::{ChainEvent, MaintainedTransactionPool, TransactionSource};
@@ -671,6 +670,7 @@ mod tests {
     use substrate_test_runtime_client::prelude::*;
     use substrate_test_runtime_client::runtime::{Block as TestBlock, Extrinsic, ExtrinsicBuilder, Transfer};
     use substrate_test_runtime_client::{TestClientBuilder, TestClientBuilderExt};
+    use tokio::sync::Mutex;
 
     use super::*;
 

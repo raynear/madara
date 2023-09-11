@@ -22,6 +22,7 @@ name = "madara"
 [dependencies]
 parking_lot = "0.12.1"
 async-trait = "0.1"
+tokio = "1.32.0"
 clap = { workspace = true, features = ["derive"] }
 futures = { workspace = true, features = ["thread-pool"] }
 log = { workspace = true }

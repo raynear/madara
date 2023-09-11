@@ -54,6 +54,7 @@ use sp_blockchain::{HashAndNumber, TreeRoute};
 use sp_core::traits::SpawnEssentialNamed;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{AtLeast32Bit, Block as BlockT, Extrinsic, Header as HeaderT, NumberFor, Zero};
+use tokio::sync::Mutex as TokioMutex;
 
 pub use crate::api::FullChainApi;
 use crate::metrics::MetricsLink as PrometheusMetrics;
@@ -77,7 +78,7 @@ where
     PoolApi: graph::ChainApi<Block = Block>,
 {
     pool: Arc<graph::Pool<PoolApi>>,
-    epool: Arc<Mutex<EncryptedPool>>,
+    epool: Arc<TokioMutex<EncryptedPool>>,
     api: Arc<PoolApi>,
     revalidation_strategy: Arc<Mutex<RevalidationStrategy<NumberFor<Block>>>>,
     revalidation_queue: Arc<revalidation::RevalidationQueue<PoolApi>>,
@@ -157,7 +158,7 @@ where
         finalized_hash: Block::Hash,
     ) -> (Self, Pin<Box<dyn Future<Output = ()> + Send>>) {
         let pool = Arc::new(graph::Pool::new(Default::default(), true.into(), pool_api.clone()));
-        let epool = Arc::new(Mutex::new(EncryptedPool::new()));
+        let epool = Arc::new(TokioMutex::new(EncryptedPool::new()));
         let (revalidation_queue, background_task) =
             revalidation::RevalidationQueue::new_background(pool_api.clone(), pool.clone());
         (
@@ -190,7 +191,7 @@ where
         finalized_hash: Block::Hash,
     ) -> Self {
         let pool = Arc::new(graph::Pool::new(options, is_validator, pool_api.clone()));
-        let epool = Arc::new(Mutex::new(EncryptedPool::new()));
+        let epool = Arc::new(TokioMutex::new(EncryptedPool::new()));
 
         let (revalidation_queue, background_task) = match revalidation_type {
             RevalidationType::Light => (revalidation::RevalidationQueue::new(pool_api.clone(), pool.clone()), None),
@@ -226,7 +227,7 @@ where
     }
 
     /// Gets shared reference to the underlying pool.
-    pub fn epool(&self) -> &Arc<Mutex<EncryptedPool>> {
+    pub fn epool(&self) -> &Arc<TokioMutex<EncryptedPool>> {
         &self.epool
     }
 
@@ -235,6 +236,16 @@ where
         &self.api
     }
 }
+
+// pub trait EPool {
+//     fn epool(&self) -> Arc<TokioMutex<EncryptedPool>>;
+// }
+
+// impl EPool for BasicPool {
+//     fn epool(&self) -> Arc<TokioMutex<EncryptedPool>> {
+//         self.epool().clone()
+//     }
+// }
 
 /// EncryptedTransactionPool inherit TransactionPool and add order for functions
 pub trait EncryptedTransactionPool: TransactionPool {

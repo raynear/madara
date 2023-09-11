@@ -209,13 +209,22 @@ impl EncryptedPool {
 
     /// add encrypted tx by block_height
     pub fn set(&mut self, block_height: u64, encrypted_invoke_transaction: EncryptedInvokeTransaction) -> u64 {
+        println!("set encrypted tx on {}", block_height);
         match self.txs.get_mut(&block_height) {
-            Some(txs) => txs.set(encrypted_invoke_transaction),
+            Some(txs) => {
+                println!("txs exist add tx");
+                txs.set(encrypted_invoke_transaction)
+            }
             None => {
+                println!("txs not exist");
                 self.txs.insert(block_height, Txs::new());
+                match self.txs.get(&block_height) {
+                    Some(txs) => println!("exist"),
+                    None => println!("not exist"),
+                };
                 match self.txs.get_mut(&block_height) {
                     Some(txs) => txs.set(encrypted_invoke_transaction),
-                    None => panic!(""),
+                    None => panic!("???"),
                 };
                 0
             }
@@ -307,6 +316,7 @@ impl EncryptedPool {
 
     /// increase decrypted tx count
     pub fn increase_decrypted_cnt(&mut self, block_height: u64) -> u64 {
+        println!("increase key received count on {}", block_height);
         match self.txs.get_mut(&block_height) {
             Some(txs) => txs.increase_decrypted_cnt(),
             None => panic!("no txs on {}", block_height),
@@ -330,8 +340,9 @@ impl EncryptedPool {
     }
 
     /// get key received information
-    pub fn get_key_received(&mut self, block_height: u64, order: u64) -> bool {
-        match self.txs.get_mut(&block_height) {
+    pub fn get_key_received(&self, block_height: u64, order: u64) -> bool {
+        println!("find key received for {}:{}", block_height, order);
+        match self.txs.get(&block_height) {
             Some(txs) => txs.get_key_received(order),
             None => panic!("no txs on {}", block_height),
         }

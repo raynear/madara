@@ -38,7 +38,6 @@ use mp_starknet::transaction::types::{
     Transaction as MPTransaction, TxType,
 };
 use pallet_starknet::runtime_api::{ConvertTransactionRuntimeApi, StarknetRuntimeApi};
-use parking_lot::Mutex;
 use sc_client_api::backend::{Backend, StorageProvider};
 use sc_network_sync::SyncingService;
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TransactionSource};
@@ -59,6 +58,7 @@ use starknet_core::types::{
 };
 use starknet_crypto::{get_public_key, sign, verify};
 use tokio;
+use tokio::sync::Mutex;
 use vdf::{ReturnData, VDF};
 
 use crate::constants::{MAX_EVENTS_CHUNK_SIZE, MAX_EVENTS_KEYS, MAX_STORAGE_PROOF_KEYS_BY_QUERY};
@@ -491,7 +491,7 @@ where
     ) -> RpcResult<InvokeTransactionResult> {
         let epool = self.epool.clone();
 
-        if epool.lock().is_enabled() {
+        if epool.lock().await.is_enabled() {
             return Err(StarknetRpcApiError::EncryptedMempoolEnabled.into());
         }
 
@@ -529,8 +529,8 @@ where
         let epool = self.epool.clone();
         let block_height = self.current_block_number().unwrap();
 
-        if epool.clone().lock().is_enabled() {
-            epool.clone().lock().increase_order(block_height);
+        if epool.clone().lock().await.is_enabled() {
+            epool.clone().lock().await.increase_order(block_height);
         }
 
         let best_block_hash = self.client.info().best_hash;
@@ -799,8 +799,8 @@ where
         let epool = self.epool.clone();
         let block_height = self.current_block_number().unwrap();
 
-        if epool.clone().lock().is_enabled() {
-            epool.clone().lock().increase_order(block_height);
+        if epool.clone().lock().await.is_enabled() {
+            epool.clone().lock().await.increase_order(block_height);
         }
 
         let best_block_hash = self.client.info().best_hash;
@@ -1107,7 +1107,7 @@ where
         let epool = self.epool.clone();
 
         {
-            let lock = epool.lock();
+            let lock = epool.lock().await;
 
             if !lock.is_enabled() {
                 return Err(StarknetRpcApiError::EncryptedMempoolDisabled.into());
@@ -1129,7 +1129,14 @@ where
             }
         }
 
-        let order = epool.clone().lock().set(block_number, encrypted_invoke_transaction.clone());
+        let order = epool.clone().lock().await.set(block_number, encrypted_invoke_transaction.clone());
+
+        {
+            let lock = epool.lock().await;
+            let aa = lock.get(block_number, order).unwrap();
+            let bb = lock.get_key_received(block_number, order);
+            println!("{:?}:{:?}", aa, bb);
+        }
 
         let chain_id = Felt252Wrapper(self.chain_id()?.0);
 
@@ -1138,12 +1145,12 @@ where
         let pool = self.pool.clone();
 
         tokio::task::spawn(async move {
-            thread::sleep(Duration::from_secs(15));
+            tokio::time::sleep(Duration::from_secs(15));
             println!("stompesi - start delay function");
 
             let encrypted_invoke_transaction: EncryptedInvokeTransaction;
             {
-                let mut lock = epool.lock();
+                let mut lock = epool.lock().await;
                 let did_received_key = lock.get_key_received(block_number, order);
 
                 if did_received_key == true {
@@ -1158,7 +1165,7 @@ where
             let invoke_tx = decryptor.decrypt_encrypted_invoke_transaction(encrypted_invoke_transaction, None).await;
 
             {
-                let mut lock = epool.lock();
+                let mut lock = epool.lock().await;
                 let did_received_key = lock.get_key_received(block_number, order);
 
                 if did_received_key == true {
@@ -1274,12 +1281,12 @@ where
         let epool = self.epool.clone();
         let block_height = decryption_info.block_number;
         let encrypted_invoke_transaction: EncryptedInvokeTransaction;
-        if !epool.clone().lock().is_enabled() {
+        if !epool.lock().await.is_enabled() {
             return Err(StarknetRpcApiError::EncryptedMempoolDisabled.into());
         }
 
         {
-            let mut lock = epool.lock();
+            let mut lock = epool.lock().await;
 
             encrypted_invoke_transaction = match lock.get(block_height, decryption_info.order) {
                 Ok(encrypted_invoke_transaction) => encrypted_invoke_transaction.clone(),
@@ -1334,7 +1341,7 @@ where
             .await;
         {
             // let mut lock = epool.lock();
-            epool.clone().lock().increase_decrypted_cnt(block_height);
+            epool.clone().lock().await.increase_decrypted_cnt(block_height);
         }
 
         let chain_id = Felt252Wrapper(self.chain_id()?.0);
