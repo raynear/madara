@@ -1132,7 +1132,7 @@ where
         let pool = self.pool.clone();
 
         tokio::task::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(15));
+            tokio::time::sleep(Duration::from_secs(15)).await;
             println!("stompesi - start delay function");
 
             let encrypted_invoke_transaction: EncryptedInvokeTransaction;
