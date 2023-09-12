@@ -415,7 +415,6 @@ pub fn new_full(
             task_manager.spawn_handle(),
             client.clone(),
             transaction_pool.clone(),
-            transaction_pool.epool().clone(),
             prometheus_registry.as_ref(),
         );
 
@@ -535,7 +534,6 @@ where
         task_manager.spawn_handle(),
         client.clone(),
         transaction_pool.clone(),
-        transaction_pool.clone().epool().clone(),
         prometheus_registry,
     );
 

@@ -18,7 +18,7 @@ use futures::{future, select};
 use hyper::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use hyper::{Body, Client, Request};
 use log::{debug, error, info, trace, warn};
-use mc_transaction_pool::{EncryptedPool, EncryptedTransactionPool};
+use mc_transaction_pool::{EPool, EncryptedPool, EncryptedTransactionPool};
 use mp_starknet::transaction::types::{Transaction as MPTransaction, TxType};
 use pallet_starknet::runtime_api::{ConvertTransactionRuntimeApi, StarknetRuntimeApi};
 use prometheus_endpoint::Registry as PrometheusRegistry;
@@ -65,7 +65,6 @@ pub struct ProposerFactory<A, B, C, PR> {
     client: Arc<C>,
     /// The transaction pool.
     transaction_pool: Arc<A>,
-    epool: Arc<Mutex<EncryptedPool>>,
     /// Prometheus Link,
     metrics: PrometheusMetrics,
     /// The default block size limit.
@@ -94,13 +93,11 @@ impl<A, B, C> ProposerFactory<A, B, C, DisableProofRecording> {
         spawn_handle: impl SpawnNamed + 'static,
         client: Arc<C>,
         transaction_pool: Arc<A>,
-        epool: Arc<Mutex<EncryptedPool>>,
         prometheus: Option<&PrometheusRegistry>,
     ) -> Self {
         ProposerFactory {
             spawn_handle: Box::new(spawn_handle),
             transaction_pool,
-            epool,
             metrics: PrometheusMetrics::new(prometheus),
             default_block_size_limit: DEFAULT_BLOCK_SIZE_LIMIT,
             soft_deadline_percent: DEFAULT_SOFT_DEADLINE_PERCENT,
@@ -141,7 +138,7 @@ impl<A, B, C, PR> ProposerFactory<A, B, C, PR> {
 
 impl<B, Block, C, A, PR> ProposerFactory<A, B, C, PR>
 where
-    A: EncryptedTransactionPool<Block = Block> + 'static,
+    A: EncryptedTransactionPool<Block = Block> + EPool + 'static,
     B: backend::Backend<Block> + Send + Sync + 'static,
     Block: BlockT,
     C: BlockBuilderProvider<B, Block, C> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
@@ -162,7 +159,6 @@ where
             parent_hash,
             parent_number: *parent_header.number(),
             transaction_pool: self.transaction_pool.clone(),
-            epool: self.epool.clone(),
             now,
             metrics: self.metrics.clone(),
             default_block_size_limit: self.default_block_size_limit,
@@ -176,7 +172,7 @@ where
 
 impl<A, B, Block, C, PR> sp_consensus::Environment<Block> for ProposerFactory<A, B, C, PR>
 where
-    A: EncryptedTransactionPool<Block = Block> + 'static,
+    A: EncryptedTransactionPool<Block = Block> + EPool + 'static,
     B: backend::Backend<Block> + Send + Sync + 'static,
     Block: BlockT,
     C: BlockBuilderProvider<B, Block, C> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
@@ -196,13 +192,12 @@ where
 }
 
 /// The proposer logic.
-pub struct Proposer<B, Block: BlockT, C, A: EncryptedTransactionPool, PR> {
+pub struct Proposer<B, Block: BlockT, C, A: EncryptedTransactionPool + EPool, PR> {
     spawn_handle: Box<dyn SpawnNamed>,
     client: Arc<C>,
     parent_hash: Block::Hash,
     parent_number: <<Block as BlockT>::Header as HeaderT>::Number,
     transaction_pool: Arc<A>,
-    epool: Arc<Mutex<EncryptedPool>>,
     now: Box<dyn Fn() -> time::Instant + Send + Sync>,
     metrics: PrometheusMetrics,
     default_block_size_limit: usize,
@@ -212,7 +207,7 @@ pub struct Proposer<B, Block: BlockT, C, A: EncryptedTransactionPool, PR> {
 
 impl<A, B, Block, C, PR> sp_consensus::Proposer<Block> for Proposer<B, Block, C, A, PR>
 where
-    A: EncryptedTransactionPool<Block = Block> + 'static,
+    A: EncryptedTransactionPool<Block = Block> + EPool + 'static,
     B: backend::Backend<Block> + Send + Sync + 'static,
     Block: BlockT,
     C: BlockBuilderProvider<B, Block, C> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
@@ -266,7 +261,7 @@ const MAX_SKIPPED_TRANSACTIONS: usize = 8;
 
 impl<A, B, Block, C, PR> Proposer<B, Block, C, A, PR>
 where
-    A: EncryptedTransactionPool<Block = Block>,
+    A: EncryptedTransactionPool<Block = Block> + EPool,
     B: backend::Backend<Block> + Send + Sync + 'static,
     Block: BlockT,
     C: BlockBuilderProvider<B, Block, C> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
@@ -410,7 +405,7 @@ where
         deadline: time::Instant,
         block_size_limit: Option<usize>,
     ) -> Result<EndProposingReason, sp_blockchain::Error> {
-        let epool = self.epool.clone();
+        let epool = self.transaction_pool.epool().clone();
 
         let mut enabled = false;
         {

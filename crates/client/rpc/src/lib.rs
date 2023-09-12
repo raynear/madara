@@ -28,7 +28,7 @@ use mc_rpc_core::Felt;
 pub use mc_rpc_core::StarknetRpcApiServer;
 use mc_storage::OverrideHandle;
 use mc_transaction_pool::decryptor::Decryptor;
-use mc_transaction_pool::{ChainApi, EncryptedPool, EncryptedTransactionPool, Pool};
+use mc_transaction_pool::{ChainApi, EPool, EncryptedPool, EncryptedTransactionPool, Pool};
 use mp_starknet::crypto::merkle_patricia_tree::merkle_tree::ProofNode;
 use mp_starknet::execution::types::Felt252Wrapper;
 use mp_starknet::traits::hash::HasherT;
@@ -76,7 +76,6 @@ pub struct Starknet<A: ChainApi, B: BlockT, BE, C, P, H> {
     backend: Arc<mc_db::Backend<B>>,
     overrides: Arc<OverrideHandle<B>>,
     pool: Arc<P>,
-    epool: Arc<Mutex<EncryptedPool>>,
     graph: Arc<Pool<A>>,
     sync_service: Arc<SyncingService<B>>,
     starting_block: <<B>::Header as HeaderT>::Number,
@@ -102,24 +101,12 @@ impl<A: ChainApi, B: BlockT, BE, C, P, H> Starknet<A, B, BE, C, P, H> {
         backend: Arc<mc_db::Backend<B>>,
         overrides: Arc<OverrideHandle<B>>,
         pool: Arc<P>,
-        epool: Arc<Mutex<EncryptedPool>>,
         graph: Arc<Pool<A>>,
         sync_service: Arc<SyncingService<B>>,
         starting_block: <<B>::Header as HeaderT>::Number,
         hasher: Arc<H>,
     ) -> Self {
-        Self {
-            client,
-            backend,
-            overrides,
-            pool,
-            epool,
-            graph,
-            sync_service,
-            starting_block,
-            hasher,
-            _marker: PhantomData,
-        }
+        Self { client, backend, overrides, pool, graph, sync_service, starting_block, hasher, _marker: PhantomData }
     }
 }
 
@@ -201,7 +188,7 @@ impl<A, B, BE, C, P, H> StarknetRpcApiServer for Starknet<A, B, BE, C, P, H>
 where
     A: ChainApi<Block = B> + 'static,
     B: BlockT,
-    P: EncryptedTransactionPool<Block = B> + 'static,
+    P: EncryptedTransactionPool<Block = B> + EPool + 'static,
     BE: Backend<B> + 'static,
     C: HeaderBackend<B> + StorageProvider<B, BE> + 'static,
     C: ProvideRuntimeApi<B>,
@@ -489,7 +476,7 @@ where
         &self,
         invoke_transaction: BroadcastedInvokeTransaction,
     ) -> RpcResult<InvokeTransactionResult> {
-        let epool = self.epool.clone();
+        let epool = self.pool.epool().clone();
 
         if epool.lock().await.is_enabled() {
             return Err(StarknetRpcApiError::EncryptedMempoolEnabled.into());
@@ -526,7 +513,7 @@ where
         &self,
         deploy_account_transaction: BroadcastedDeployAccountTransaction,
     ) -> RpcResult<DeployAccountTransactionResult> {
-        let epool = self.epool.clone();
+        let epool = self.pool.epool().clone();
         let block_height = self.current_block_number().unwrap();
 
         if epool.clone().lock().await.is_enabled() {
@@ -796,7 +783,7 @@ where
         &self,
         declare_transaction: BroadcastedDeclareTransaction,
     ) -> RpcResult<DeclareTransactionResult> {
-        let epool = self.epool.clone();
+        let epool = self.pool.epool().clone();
         let block_height = self.current_block_number().unwrap();
 
         if epool.clone().lock().await.is_enabled() {
@@ -1104,7 +1091,7 @@ where
     ) -> RpcResult<EncryptedMempoolTransactionResult> {
         let mut block_number = self.current_block_number().unwrap() + 1;
 
-        let epool = self.epool.clone();
+        let epool = self.pool.epool().clone();
 
         {
             let lock = epool.lock().await;
@@ -1278,7 +1265,7 @@ where
 
         let sequencer_public_key = get_public_key(&sequencer_private_key);
 
-        let epool = self.epool.clone();
+        let epool = self.pool.epool().clone();
         let block_height = decryption_info.block_number;
         let encrypted_invoke_transaction: EncryptedInvokeTransaction;
         if !epool.lock().await.is_enabled() {

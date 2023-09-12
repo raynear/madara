@@ -237,15 +237,19 @@ where
     }
 }
 
-// pub trait EPool {
-//     fn epool(&self) -> Arc<TokioMutex<EncryptedPool>>;
-// }
+pub trait EPool {
+    fn epool(&self) -> Arc<TokioMutex<EncryptedPool>>;
+}
 
-// impl EPool for BasicPool {
-//     fn epool(&self) -> Arc<TokioMutex<EncryptedPool>> {
-//         self.epool().clone()
-//     }
-// }
+impl<PoolApi, Block> EPool for BasicPool<PoolApi, Block>
+where
+    Block: BlockT,
+    PoolApi: graph::ChainApi<Block = Block> + 'static,
+{
+    fn epool(&self) -> Arc<TokioMutex<EncryptedPool>> {
+        self.epool().clone()
+    }
+}
 
 /// EncryptedTransactionPool inherit TransactionPool and add order for functions
 pub trait EncryptedTransactionPool: TransactionPool {
