@@ -156,9 +156,10 @@ where
         pool_api: Arc<PoolApi>,
         best_block_hash: Block::Hash,
         finalized_hash: Block::Hash,
+        encrypted_mempool: bool,
     ) -> (Self, Pin<Box<dyn Future<Output = ()> + Send>>) {
         let pool = Arc::new(graph::Pool::new(Default::default(), true.into(), pool_api.clone()));
-        let epool = Arc::new(TokioMutex::new(EncryptedPool::new()));
+        let epool = Arc::new(TokioMutex::new(EncryptedPool::new(encrypted_mempool)));
         let (revalidation_queue, background_task) =
             revalidation::RevalidationQueue::new_background(pool_api.clone(), pool.clone());
         (
@@ -189,9 +190,10 @@ where
         best_block_number: NumberFor<Block>,
         best_block_hash: Block::Hash,
         finalized_hash: Block::Hash,
+        encrypted_mempool: bool,
     ) -> Self {
         let pool = Arc::new(graph::Pool::new(options, is_validator, pool_api.clone()));
-        let epool = Arc::new(TokioMutex::new(EncryptedPool::new()));
+        let epool = Arc::new(TokioMutex::new(EncryptedPool::new(encrypted_mempool)));
 
         let (revalidation_queue, background_task) = match revalidation_type {
             RevalidationType::Light => (revalidation::RevalidationQueue::new(pool_api.clone(), pool.clone()), None),
@@ -445,6 +447,7 @@ where
         prometheus: Option<&PrometheusRegistry>,
         spawner: impl SpawnEssentialNamed,
         client: Arc<Client>,
+        encrypted_mempool: bool,
     ) -> Arc<Self> {
         let pool_api = Arc::new(FullChainApi::new(client.clone(), prometheus, &spawner));
         let pool = Arc::new(Self::with_revalidation_type(
@@ -457,6 +460,7 @@ where
             client.usage_info().chain.best_number,
             client.usage_info().chain.best_hash,
             client.usage_info().chain.finalized_hash,
+            encrypted_mempool,
         ));
 
         // make transaction pool available for off-chain runtime calls.

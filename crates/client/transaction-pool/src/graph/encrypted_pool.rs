@@ -181,8 +181,8 @@ impl EncryptedPool {
     }
 
     /// new epool
-    pub fn new() -> Self {
-        Self { txs: HashMap::default(), enabled: true }
+    pub fn new(encrypted_mempool: bool) -> Self {
+        Self { txs: HashMap::default(), enabled: encrypted_mempool }
     }
 
     /// add new Txs for block_height

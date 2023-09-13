@@ -69,6 +69,7 @@ type BoxBlockImport<Client> = sc_consensus::BoxBlockImport<Block, TransactionFor
 pub fn new_partial<BIQ>(
     config: &Configuration,
     build_import_queue: BIQ,
+    encrypted_mempool: bool,
 ) -> Result<
     sc_service::PartialComponents<
         FullClient,
@@ -148,6 +149,7 @@ where
         config.prometheus_registry(),
         task_manager.spawn_essential_handle(),
         client.clone(),
+        encrypted_mempool,
     );
 
     let (grandpa_block_import, grandpa_link) = sc_consensus_grandpa::block_import(
@@ -244,14 +246,6 @@ where
     ))
 }
 
-pub async fn enable_epool(epool: Arc<Mutex<EncryptedPool>>) {
-    epool.lock().await.enable_encrypted_mempool();
-}
-
-pub async fn disable_epool(epool: Arc<Mutex<EncryptedPool>>) {
-    epool.lock().await.disable_encrypted_mempool();
-}
-
 /// Builds a new service for a full client.
 pub fn new_full(
     config: Configuration,
@@ -270,14 +264,7 @@ pub fn new_full(
         select_chain,
         transaction_pool,
         other: (block_import, grandpa_link, mut telemetry, madara_backend),
-    } = new_partial(&config, build_import_queue)?;
-
-    // TODO: check lock await
-    if encrypted_mempool {
-        enable_epool(transaction_pool.epool().clone());
-    } else {
-        disable_epool(transaction_pool.epool().clone());
-    }
+    } = new_partial(&config, build_import_queue, encrypted_mempool)?;
 
     let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
 
@@ -610,9 +597,9 @@ type ChainOpsResult = Result<
     ServiceError,
 >;
 
-pub fn new_chain_ops(mut config: &mut Configuration) -> ChainOpsResult {
+pub fn new_chain_ops(mut config: &mut Configuration, encrypted_mempool: bool) -> ChainOpsResult {
     config.keystore = sc_service::config::KeystoreConfig::InMemory;
     let sc_service::PartialComponents { client, backend, import_queue, task_manager, other, .. } =
-        new_partial::<_>(config, build_aura_grandpa_import_queue)?;
+        new_partial::<_>(config, build_aura_grandpa_import_queue, encrypted_mempool)?;
     Ok((client, backend, import_queue, task_manager, other.3))
 }
