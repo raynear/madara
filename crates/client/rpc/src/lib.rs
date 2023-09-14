@@ -1035,6 +1035,7 @@ where
     fn encrypt_invoke_transaction(
         &self,
         invoke_transaction: BroadcastedInvokeTransaction,
+        t: u64, // Time - The number of calculations for how much time should be taken in VDF
     ) -> RpcResult<EncryptedInvokeTransactionResult> {
         let encryptor = SequencerPoseidonEncryption::new();
 
@@ -1042,7 +1043,6 @@ where
         let lambda = 2048; // N's bits (ex. RSA-2048 => lambda = 2048)
         let vdf: VDF = VDF::new(lambda, base);
 
-        let t: u64 = 23; // Time - The number of calculations for how much time should be taken in VDF
         let params = vdf.setup(t); // Generate parameters (it returns value as json string)
         let params: ReturnData = serde_json::from_str(params.as_str()).unwrap(); // Parsing parameters
 
@@ -1123,6 +1123,7 @@ where
 
         tokio::task::spawn(async move {
             tokio::time::sleep(Duration::from_secs(1)).await;
+
             println!("stompesi - start delay function");
 
             let encrypted_invoke_transaction: EncryptedInvokeTransaction;
