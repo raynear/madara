@@ -458,8 +458,9 @@ where
                     if lock.exist(block_height) {
                         let tx_cnt = lock.get_tx_cnt(block_height);
                         let dec_cnt = lock.get_decrypted_cnt(block_height);
-                        // let closed = lock.is_closed(block_height).unwrap();
-                        if tx_cnt == dec_cnt {
+                        let ready_cnt = self.transaction_pool.status().ready as u64;
+                        // println!("waiting {}:{}:{}", tx_cnt, dec_cnt, ready_cnt);
+                        if tx_cnt == dec_cnt && dec_cnt == ready_cnt {
                             break;
                         }
                     } else {
@@ -493,6 +494,8 @@ where
                 self.transaction_pool.ready()
             },
         };
+
+        println!("pool status: {:?}", self.transaction_pool.status());
 
         let block_size_limit = block_size_limit.unwrap_or(self.default_block_size_limit);
 

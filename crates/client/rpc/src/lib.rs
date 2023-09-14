@@ -1101,9 +1101,6 @@ where
             }
 
             if lock.exist(block_number) {
-                let txs = lock.get_txs(block_number).unwrap();
-
-                // let closed = txs.is_closed();
                 let closed = lock.is_closed(block_number).unwrap();
                 println!("{} : closed? {}", block_number, closed);
 
@@ -1117,13 +1114,6 @@ where
         }
 
         let order = epool.clone().lock().await.set(block_number, encrypted_invoke_transaction.clone());
-
-        {
-            let lock = epool.lock().await;
-            let aa = lock.get(block_number, order).unwrap();
-            let bb = lock.get_key_received(block_number, order);
-            println!("{:?}:{:?}", aa, bb);
-        }
 
         let chain_id = Felt252Wrapper(self.chain_id()?.0);
 

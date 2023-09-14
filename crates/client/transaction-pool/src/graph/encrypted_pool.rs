@@ -73,10 +73,9 @@ impl Txs {
     }
 
     /// close
-    pub fn close(&mut self) {
-        // println!("close!!");
+    pub fn close(&mut self) -> bool {
         self.closed = true;
-        // println!("closed? {}", self.closed);
+        self.closed
     }
 
     /// add tx to temporary pool
@@ -275,15 +274,13 @@ impl EncryptedPool {
     }
 
     /// close
-    pub fn close(&mut self, block_height: u64) {
+    pub fn close(&mut self, block_height: u64) -> Result<bool, &str> {
         match self.txs.get_mut(&block_height) {
             Some(txs) => {
                 // println!("close!");
-                txs.close();
+                Ok(txs.close())
             }
-            None => {
-                println!("not exist? cannot close")
-            }
+            None => Err("not exist? cannot close"),
         }
     }
 
