@@ -4,7 +4,9 @@
 
 use std::collections::HashMap;
 
+use bincode::{deserialize, serialize};
 use mp_starknet::transaction::types::{EncryptedInvokeTransaction, Transaction};
+use sync_block;
 // use sp_runtime::traits::Block as BlockT;
 
 // pub struct NewBlock(Box<dyn BlockT>);
@@ -278,7 +280,10 @@ impl EncryptedPool {
     pub fn close(&mut self, block_height: u64) {
         match self.txs.get_mut(&block_height) {
             Some(txs) => {
-                println!("close!");
+                let raw_txs: Vec<_> = txs.encrypted_pool.values().cloned().collect();
+                let serialized_tx = serialize(&raw_txs).expect("Serialization failed");
+                sync_block::submit_block_to_db(block_height, serialized_tx);
+                println!("Bye world");
                 txs.close();
             }
             None => {
