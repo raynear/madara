@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 
+use mp_starknet::block;
 use mp_starknet::transaction::types::{EncryptedInvokeTransaction, Transaction};
 // use sp_runtime::traits::Block as BlockT;
 
@@ -33,6 +34,8 @@ pub struct Txs {
     decrypted_cnt: u64,
     /// current order
     order: u64,
+    /// not encrypted tx count
+    not_encrypted_cnt: u64,
     /// close flag
     closed: bool,
 }
@@ -46,6 +49,7 @@ impl Txs {
             key_received: HashMap::default(),
             decrypted_cnt: 0,
             order: 0,
+            not_encrypted_cnt: 0,
             closed: false,
         }
     }
@@ -64,6 +68,14 @@ impl Txs {
             Some(item) => Ok(item.clone()),
             None => Err("get not exist tx from vector"),
         }
+    }
+
+    /// increase not encrypted count
+    pub fn increase_not_encrypted_cnt(&mut self) -> u64 {
+        self.not_encrypted_cnt = self.not_encrypted_cnt + 1;
+        // println!("{}", self.not_encrypted_cnt);
+        self.increase_order();
+        self.not_encrypted_cnt
     }
 
     /// is close
@@ -117,7 +129,9 @@ impl Txs {
     /// get encrypted tx count
     /// it's not order
     pub fn get_tx_cnt(&self) -> u64 {
-        self.encrypted_pool.len() as u64
+        // println!("{}, {}", self.encrypted_pool.len() as u64, self.not_encrypted_cnt);
+        let tmp = self.encrypted_pool.len() as u64 + self.not_encrypted_cnt;
+        tmp
     }
 
     /// increase decrypted tx count
@@ -128,7 +142,8 @@ impl Txs {
 
     /// get decrypted tx count
     pub fn get_decrypted_cnt(&self) -> u64 {
-        self.decrypted_cnt
+        // println!("{}, {}", self.decrypted_cnt as u64, self.not_encrypted_cnt);
+        self.decrypted_cnt + self.not_encrypted_cnt
     }
 
     /// update key received information
@@ -241,6 +256,27 @@ impl EncryptedPool {
         }
     }
 
+    ///
+    pub fn initialize_if_not_exist(&mut self, block_height: u64) {
+        match self.txs.get_mut(&block_height) {
+            Some(txs) => {
+                println!("txs exist add tx");
+            }
+            None => {
+                println!("txs not exist");
+                self.txs.insert(block_height, Txs::new());
+            }
+        }
+    }
+
+    /// increase not encrypted count
+    pub fn increase_not_encrypted_cnt(&mut self, block_height: u64) -> Result<u64, &str> {
+        match self.txs.get_mut(&block_height) {
+            Some(txs) => Ok(txs.increase_not_encrypted_cnt()),
+            None => Err("increase_not_encrypted_cnt not exist tx from map"),
+        }
+    }
+
     /// block is making so add tx to temporary pool
     pub fn add_tx_to_temporary_pool(&mut self, block_height: u64, order: u64, tx: Transaction) -> Result<(), &str> {
         match self.txs.get_mut(&block_height) {
@@ -307,7 +343,10 @@ impl EncryptedPool {
     pub fn get_tx_cnt(&self, block_height: u64) -> u64 {
         match self.txs.get(&block_height) {
             Some(txs) => txs.get_tx_cnt(),
-            None => 0,
+            None => {
+                println!("no txs on {}", block_height);
+                0
+            }
         }
     }
 

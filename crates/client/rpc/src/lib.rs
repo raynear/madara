@@ -476,12 +476,6 @@ where
         &self,
         invoke_transaction: BroadcastedInvokeTransaction,
     ) -> RpcResult<InvokeTransactionResult> {
-        let epool = self.pool.epool().clone();
-
-        if epool.lock().await.is_enabled() {
-            return Err(StarknetRpcApiError::EncryptedMempoolEnabled.into());
-        }
-
         let best_block_hash = self.client.info().best_hash;
         let invoke_tx = InvokeTransaction::try_from(invoke_transaction).map_err(|e| {
             error!("{e}");
@@ -494,7 +488,18 @@ where
         let extrinsic =
             convert_transaction(self.client.clone(), best_block_hash, transaction.clone(), TxType::Invoke).await?;
 
-        submit_extrinsic(self.pool.clone(), best_block_hash, extrinsic).await?;
+        let mut block_number = self.current_block_number().unwrap() + 1;
+        let epool = self.pool.epool().clone();
+
+        let mut order;
+        {
+            let mut lock = epool.lock().await;
+            lock.initialize_if_not_exist(block_number);
+            order = lock.get_order(block_number);
+            lock.increase_not_encrypted_cnt(block_number).unwrap();
+        }
+
+        submit_extrinsic_with_order(self.pool.clone(), best_block_hash, extrinsic, order).await?;
 
         Ok(InvokeTransactionResult { transaction_hash: transaction.hash.into() })
     }
@@ -538,7 +543,18 @@ where
             convert_transaction(self.client.clone(), best_block_hash, transaction.clone(), TxType::DeployAccount)
                 .await?;
 
-        submit_extrinsic(self.pool.clone(), best_block_hash, extrinsic).await?;
+        let mut block_number = self.current_block_number().unwrap() + 1;
+        let epool = self.pool.epool().clone();
+
+        let mut order;
+        {
+            let mut lock = epool.lock().await;
+            lock.initialize_if_not_exist(block_number);
+            order = lock.get_order(block_number);
+            lock.increase_not_encrypted_cnt(block_number);
+        }
+
+        submit_extrinsic_with_order(self.pool.clone(), best_block_hash, extrinsic, order).await?;
 
         Ok(DeployAccountTransactionResult {
             transaction_hash: transaction.hash.into(),
@@ -813,7 +829,18 @@ where
         let extrinsic =
             convert_transaction(self.client.clone(), best_block_hash, transaction.clone(), TxType::Declare).await?;
 
-        submit_extrinsic(self.pool.clone(), best_block_hash, extrinsic).await?;
+        let mut block_number = self.current_block_number().unwrap() + 1;
+        let epool = self.pool.epool().clone();
+
+        let mut order;
+        {
+            let mut lock = epool.lock().await;
+            lock.initialize_if_not_exist(block_number);
+            order = lock.get_order(block_number);
+            lock.increase_not_encrypted_cnt(block_number);
+        }
+
+        submit_extrinsic_with_order(self.pool.clone(), best_block_hash, extrinsic, order).await?;
 
         Ok(DeclareTransactionResult {
             transaction_hash: transaction.hash.into(),

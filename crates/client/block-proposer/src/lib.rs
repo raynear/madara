@@ -340,7 +340,7 @@ where
         // Print the summary of the proposal.
         self.print_summary(&block, end_reason, block_took, propose_with_timer.elapsed());
 
-        println!("start block_height {}", self.parent_number.to_string().parse::<u64>().unwrap());
+        // println!("start block_height {}", self.parent_number.to_string().parse::<u64>().unwrap());
 
         Ok(Proposal { block, proof, storage_changes })
     }
@@ -459,7 +459,7 @@ where
                         let tx_cnt = lock.get_tx_cnt(block_height);
                         let dec_cnt = lock.get_decrypted_cnt(block_height);
                         let ready_cnt = self.transaction_pool.status().ready as u64;
-                        // println!("waiting {}:{}:{}", tx_cnt, dec_cnt, ready_cnt);
+                        // println!("{} waiting {}:{}:{}", block_height, tx_cnt, dec_cnt, ready_cnt);
                         if tx_cnt == dec_cnt && dec_cnt == ready_cnt {
                             break;
                         }
@@ -494,8 +494,6 @@ where
                 self.transaction_pool.ready()
             },
         };
-
-        println!("pool status: {:?}", self.transaction_pool.status());
 
         let block_size_limit = block_size_limit.unwrap_or(self.default_block_size_limit);
 
