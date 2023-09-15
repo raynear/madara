@@ -1132,12 +1132,7 @@ async fn submit_to_da(data: &str) -> String {
         "id": 1,
     });
 
-    // println!("stompesi - rpc_request: {:?}", rpc_request);
-
     let uri = std::env::var("da_uri").unwrap_or(da_host.into());
-
-    // println!("stompesi - uri: {:?}", uri);
-    // println!("stompesi - da_auth: {:?}", da_auth);
 
     // Token should be removed from code.
     let req = Request::post(uri.as_str())
@@ -1155,8 +1150,6 @@ async fn submit_to_da(data: &str) -> String {
 
     let response_body = hyper::body::to_bytes(resp.into_body()).await.unwrap();
     let parsed: Value = serde_json::from_slice(&response_body).unwrap();
-
-    // println!("stompesi - {:?}", parsed);
 
     if let Some(result_value) = parsed.get("result") { result_value.to_string() } else { "".to_string() }
 }

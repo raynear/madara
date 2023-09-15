@@ -153,6 +153,7 @@ pub trait StarknetRpcApi {
     fn encrypt_invoke_transaction(
         &self,
         invoke_transaction: BroadcastedInvokeTransaction,
+        t: u64,
     ) -> RpcResult<EncryptedInvokeTransactionResult>;
 
     // (For testing) Decrypt Encrypted Invoke Transaction
