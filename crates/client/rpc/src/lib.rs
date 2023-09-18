@@ -11,8 +11,6 @@ mod types;
 use core::str::FromStr;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use std::thread;
-use std::time::Duration;
 
 use encryptor::SequencerPoseidonEncryption;
 use errors::StarknetRpcApiError;
@@ -28,7 +26,7 @@ use mc_rpc_core::Felt;
 pub use mc_rpc_core::StarknetRpcApiServer;
 use mc_storage::OverrideHandle;
 use mc_transaction_pool::decryptor::Decryptor;
-use mc_transaction_pool::{ChainApi, EPool, EncryptedPool, EncryptedTransactionPool, Pool};
+use mc_transaction_pool::{ChainApi, EPool, EncryptedTransactionPool, Pool};
 use mp_starknet::crypto::merkle_patricia_tree::merkle_tree::ProofNode;
 use mp_starknet::execution::types::Felt252Wrapper;
 use mp_starknet::traits::hash::HasherT;
@@ -57,8 +55,6 @@ use starknet_core::types::{
     Transaction, TransactionStatus,
 };
 use starknet_crypto::{get_public_key, sign, verify};
-use tokio;
-use tokio::sync::Mutex;
 use vdf::{ReturnData, VDF};
 
 use crate::constants::{MAX_EVENTS_CHUNK_SIZE, MAX_EVENTS_KEYS, MAX_STORAGE_PROOF_KEYS_BY_QUERY};
@@ -488,10 +484,10 @@ where
         let extrinsic =
             convert_transaction(self.client.clone(), best_block_hash, transaction.clone(), TxType::Invoke).await?;
 
-        let mut block_number = self.current_block_number().unwrap() + 1;
+        let block_number = self.current_block_number().unwrap() + 1;
         let epool = self.pool.epool().clone();
 
-        let mut order;
+        let order;
         {
             let mut lock = epool.lock().await;
             lock.initialize_if_not_exist(block_number);
@@ -543,15 +539,15 @@ where
             convert_transaction(self.client.clone(), best_block_hash, transaction.clone(), TxType::DeployAccount)
                 .await?;
 
-        let mut block_number = self.current_block_number().unwrap() + 1;
+        let block_number = self.current_block_number().unwrap() + 1;
         let epool = self.pool.epool().clone();
 
-        let mut order;
+        let order;
         {
             let mut lock = epool.lock().await;
             lock.initialize_if_not_exist(block_number);
             order = lock.get_order(block_number);
-            lock.increase_not_encrypted_cnt(block_number);
+            let _ = lock.increase_not_encrypted_cnt(block_number);
         }
 
         submit_extrinsic_with_order(self.pool.clone(), best_block_hash, extrinsic, order).await?;
@@ -829,15 +825,15 @@ where
         let extrinsic =
             convert_transaction(self.client.clone(), best_block_hash, transaction.clone(), TxType::Declare).await?;
 
-        let mut block_number = self.current_block_number().unwrap() + 1;
+        let block_number = self.current_block_number().unwrap() + 1;
         let epool = self.pool.epool().clone();
 
-        let mut order;
+        let order;
         {
             let mut lock = epool.lock().await;
             lock.initialize_if_not_exist(block_number);
             order = lock.get_order(block_number);
-            lock.increase_not_encrypted_cnt(block_number);
+            let _ = lock.increase_not_encrypted_cnt(block_number);
         }
 
         submit_extrinsic_with_order(self.pool.clone(), best_block_hash, extrinsic, order).await?;
@@ -1147,81 +1143,6 @@ where
         let best_block_hash = self.client.info().best_hash;
         let client = self.client.clone();
         let pool = self.pool.clone();
-
-        tokio::task::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-
-            println!("stompesi - start delay function");
-
-            let encrypted_invoke_transaction: EncryptedInvokeTransaction;
-            {
-                let mut lock = epool.lock().await;
-                let did_received_key = lock.get_key_received(block_number, order);
-
-                if did_received_key == true {
-                    println!("Received key");
-                    return;
-                }
-                println!("Not received key");
-                encrypted_invoke_transaction = lock.get(block_number, order).unwrap().clone();
-            }
-
-            let decryptor = Decryptor::new();
-            let invoke_tx = decryptor.decrypt_encrypted_invoke_transaction(encrypted_invoke_transaction, None).await;
-
-            {
-                let mut lock = epool.lock().await;
-                let did_received_key = lock.get_key_received(block_number, order);
-
-                if did_received_key == true {
-                    println!("Received key");
-                    return;
-                }
-
-                lock.increase_decrypted_cnt(block_number);
-
-                let previous_closed = match lock.is_closed(block_number - 1) {
-                    Ok(closed) => {
-                        if closed {
-                            println!("{} is closed", block_number - 1);
-                        } else {
-                            println!("{} is not closed", block_number - 1);
-                        };
-                        closed
-                    }
-                    Err(e) => {
-                        println!("no state for {}", block_number - 1);
-                        false
-                    }
-                };
-
-                if previous_closed {
-                    let mut txs = match lock.get_txs(block_number) {
-                        Ok(txs) => txs.clone(),
-                        Err(e) => panic!("no case of this"),
-                    };
-
-                    // let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
-                    // let extrinsic = convert_transaction(client, best_block_hash, transaction.clone(), TxType::Invoke)
-                    //     .await
-                    //     .expect("Failed to submit extrinsic");
-
-                    let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
-                    println!("{} is closed.. push on temporary pool of {}", block_number - 1, block_number);
-                    txs.add_tx_to_temporary_pool(order, transaction);
-                    return;
-                }
-            }
-
-            let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
-            let extrinsic = convert_transaction(client, best_block_hash, transaction.clone(), TxType::Invoke)
-                .await
-                .expect("Failed to submit extrinsic");
-
-            submit_extrinsic_with_order(pool, best_block_hash, extrinsic, order)
-                .await
-                .expect("Failed to submit extrinsic");
-        });
 
         // Generate commitment
 

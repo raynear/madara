@@ -18,8 +18,11 @@ use futures::{future, select};
 use hyper::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use hyper::{Body, Client, Request};
 use log::{debug, error, info, trace, warn};
-use mc_transaction_pool::{EPool, EncryptedPool, EncryptedTransactionPool};
-use mp_starknet::transaction::types::{Transaction as MPTransaction, TxType};
+use mc_rpc::submit_extrinsic_with_order;
+use mc_transaction_pool::decryptor::Decryptor;
+use mc_transaction_pool::{EPool, EncryptedTransactionPool};
+use mp_starknet::execution::types::Felt252Wrapper;
+use mp_starknet::transaction::types::{EncryptedInvokeTransaction, Transaction as MPTransaction, TxType};
 use pallet_starknet::runtime_api::{ConvertTransactionRuntimeApi, StarknetRuntimeApi};
 use prometheus_endpoint::Registry as PrometheusRegistry;
 use sc_block_builder::{BlockBuilderApi, BlockBuilderProvider};
@@ -38,7 +41,6 @@ use sp_runtime::generic::BlockId as SPBlockId;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use sp_runtime::{Digest, Percent, SaturatedConversion};
 use tokio;
-use tokio::sync::Mutex;
 
 /// Default block size limit in bytes used by [`Proposer`].
 ///
@@ -261,7 +263,7 @@ const MAX_SKIPPED_TRANSACTIONS: usize = 8;
 
 impl<A, B, Block, C, PR> Proposer<B, Block, C, A, PR>
 where
-    A: EncryptedTransactionPool<Block = Block> + EPool,
+    A: EncryptedTransactionPool<Block = Block> + EPool + 'static,
     B: backend::Backend<Block> + Send + Sync + 'static,
     Block: BlockT,
     C: BlockBuilderProvider<B, Block, C> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
@@ -340,8 +342,6 @@ where
         // Print the summary of the proposal.
         self.print_summary(&block, end_reason, block_took, propose_with_timer.elapsed());
 
-        // println!("start block_height {}", self.parent_number.to_string().parse::<u64>().unwrap());
-
         Ok(Proposal { block, proof, storage_changes })
     }
 
@@ -406,23 +406,27 @@ where
         block_size_limit: Option<usize>,
     ) -> Result<EndProposingReason, sp_blockchain::Error> {
         let epool = self.transaction_pool.epool().clone();
+        let block_height = self.parent_number.to_string().parse::<u64>().unwrap() + 1;
 
-        let mut enabled = false;
-        {
+        let enabled = {
             let lock = epool.lock().await;
-            enabled = lock.is_enabled();
-        }
+            lock.is_enabled()
+        };
 
-        if enabled {
-            // wait decryption
-            let block_height = self.parent_number.to_string().parse::<u64>().unwrap() + 1;
+        let closed = {
+            let lock = epool.lock().await;
+            let exist = lock.exist(block_height);
+            if exist { lock.is_closed(block_height).unwrap() } else { false }
+        };
 
+        if enabled && !closed {
+            // add temporary pool tx to pool
             let mut temporary_pool: Vec<(u64, MPTransaction)> = vec![];
             {
                 let mut lock = epool.lock().await;
                 if lock.exist(block_height) {
                     println!("close on {}", block_height);
-                    lock.close(block_height);
+                    let _ = lock.close(block_height);
 
                     let txs = lock.get_txs(block_height).unwrap();
 
@@ -450,24 +454,127 @@ where
                     .await;
             }
 
-            let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
+            let cnt = {
+                let lock = epool.lock().await;
 
-            loop {
-                {
-                    let lock = epool.lock().await;
-                    if lock.exist(block_height) {
-                        let tx_cnt = lock.get_tx_cnt(block_height);
-                        let dec_cnt = lock.get_decrypted_cnt(block_height);
-                        let ready_cnt = self.transaction_pool.status().ready as u64;
-                        // println!("{} waiting {}:{}:{}", block_height, tx_cnt, dec_cnt, ready_cnt);
-                        if tx_cnt == dec_cnt && dec_cnt == ready_cnt {
-                            break;
-                        }
-                    } else {
-                        break;
+                lock.len(block_height) as u64
+            };
+
+            for order in 0..cnt {
+                let block_height = self.parent_number.to_string().parse::<u64>().unwrap() + 1;
+                let best_block_hash = self.client.info().best_hash;
+                let client = self.client.clone();
+                let pool = self.transaction_pool.clone();
+                let chain_id = Felt252Wrapper(client.runtime_api().chain_id(best_block_hash).unwrap().into());
+                let epool = self.transaction_pool.epool().clone();
+                self.spawn_handle.spawn_blocking(
+                    "Decryptor",
+                    None,
+                    Box::pin(
+                        // tokio::task::spawn(
+                        async move {
+                            tokio::time::sleep(Duration::from_secs(1)).await;
+
+                            println!("stompesi - start delay function block_height {} order {}", block_height, order);
+
+                            let encrypted_invoke_transaction: EncryptedInvokeTransaction;
+                            {
+                                let lock = epool.lock().await;
+                                // println!("check key_received on block_height {} order {}", block_height, order);
+                                let did_received_key = lock.get_key_received(block_height, order);
+
+                                if did_received_key == true {
+                                    println!("Received key");
+                                    return;
+                                }
+                                println!("Not received key");
+                                encrypted_invoke_transaction = lock.get(block_height, order).unwrap().clone();
+                            }
+
+                            let decryptor = Decryptor::new();
+                            let invoke_tx = decryptor
+                                .decrypt_encrypted_invoke_transaction(encrypted_invoke_transaction, None)
+                                .await;
+                            // println!("decrypt done on block_height {} order {}", block_height, order);
+
+                            {
+                                let mut lock = epool.lock().await;
+                                // println!("check key_received on block_height {} order {}", block_height, order);
+                                let did_received_key = lock.get_key_received(block_height, order);
+
+                                if did_received_key == true {
+                                    println!("Received key");
+                                    return;
+                                }
+
+                                lock.increase_decrypted_cnt(block_height);
+
+                                let previous_closed = match lock.is_closed(block_height - 1) {
+                                    Ok(closed) => {
+                                        if closed {
+                                            println!("{} is closed", block_height - 1);
+                                        } else {
+                                            println!("{} is not closed", block_height - 1);
+                                        };
+                                        closed
+                                    }
+                                    Err(_e) => {
+                                        println!("no state for {}", block_height - 1);
+                                        false
+                                    }
+                                };
+
+                                if previous_closed {
+                                    let mut txs = match lock.get_txs(block_height) {
+                                        Ok(txs) => txs.clone(),
+                                        Err(_e) => panic!("no case of this"),
+                                    };
+
+                                    // let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
+                                    // let extrinsic = convert_transaction(client, best_block_hash,
+                                    // transaction.clone(), TxType::Invoke)
+                                    // .await     .expect("Failed to submit
+                                    // extrinsic");
+
+                                    let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
+                                    println!(
+                                        "{} is closed.. push on temporary pool of {}",
+                                        block_height - 1,
+                                        block_height
+                                    );
+                                    txs.add_tx_to_temporary_pool(order, transaction);
+                                    return;
+                                }
+                            }
+
+                            let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
+                            let extrinsic = client
+                                .runtime_api()
+                                .convert_transaction(best_block_hash, transaction.clone(), TxType::Invoke)
+                                .unwrap()
+                                .expect("Failed to submit extrinsic");
+
+                            submit_extrinsic_with_order(pool, best_block_hash, extrinsic, order)
+                                .await
+                                .expect("Failed to submit extrinsic");
+                        },
+                    ),
+                )
+            }
+        }
+
+        if enabled {
+            {
+                let lock = epool.lock().await;
+                if lock.exist(block_height) {
+                    let tx_cnt = lock.get_tx_cnt(block_height);
+                    let dec_cnt = lock.get_decrypted_cnt(block_height);
+                    let ready_cnt = self.transaction_pool.status().ready as u64;
+                    println!("{} waiting {}:{}:{}", block_height, tx_cnt, dec_cnt, ready_cnt);
+                    if !(tx_cnt == dec_cnt && dec_cnt == ready_cnt) {
+                        return Err(sp_blockchain::Error::TransactionPoolNotReady);
                     }
                 }
-                interval.tick().await;
             }
         }
 

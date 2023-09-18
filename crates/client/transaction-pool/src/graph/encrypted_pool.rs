@@ -4,7 +4,6 @@
 
 use std::collections::HashMap;
 
-use mp_starknet::block;
 use mp_starknet::transaction::types::{EncryptedInvokeTransaction, Transaction};
 // use sp_runtime::traits::Block as BlockT;
 
@@ -233,7 +232,7 @@ impl EncryptedPool {
                 println!("txs not exist");
                 self.txs.insert(block_height, Txs::new());
                 match self.txs.get(&block_height) {
-                    Some(txs) => println!("exist"),
+                    Some(_txs) => println!("exist"),
                     None => println!("not exist"),
                 };
                 match self.txs.get_mut(&block_height) {
@@ -259,7 +258,7 @@ impl EncryptedPool {
     ///
     pub fn initialize_if_not_exist(&mut self, block_height: u64) {
         match self.txs.get_mut(&block_height) {
-            Some(txs) => {
+            Some(_txs) => {
                 println!("txs exist add tx");
             }
             None => {

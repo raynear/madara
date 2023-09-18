@@ -239,7 +239,9 @@ where
     }
 }
 
+/// trait for get epool
 pub trait EPool {
+    /// get epool
     fn epool(&self) -> Arc<TokioMutex<EncryptedPool>>;
 }
 
