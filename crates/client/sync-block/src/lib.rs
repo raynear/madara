@@ -234,9 +234,9 @@ pub fn sync_with_da() {
             println!("this is sync_target inside if: {:?}", sync_target);
 
             let (key, value) = get_next_entry(&sync_bin);
-            println!("THIS IS KEY: {:?}", key);
-            txs = retrieve_from_db(&serialize(&key).expect("Failed to serialize"));
-            println!("these are the txs: {:?}", txs);
+            let deser_key: u64 = deserialize(&key).expect("Failed to deserialize");
+            txs = retrieve_from_db(&serialize(&deser_key).expect("Failed to serialize"));
+            println!("these are the txs: {:?}", txs.len());
             let s = match str::from_utf8(&txs) {
                 Ok(v) => v,
                 Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
