@@ -612,7 +612,7 @@ where
             let mut lock = epool.lock().await;
             if lock.is_enabled() {
                 let block_height = self.parent_number.to_string().parse::<u64>().unwrap() + 1;
-                let encrypted_tx_pool_size: usize = lock.len(block_height);
+/*                 let encrypted_tx_pool_size: usize = lock.len(block_height);
 
                 if encrypted_tx_pool_size > 0 {
                     let encrypted_invoke_transactions = lock.get_encrypted_tx_pool(block_height);
@@ -624,7 +624,7 @@ where
                     submit_to_da(&encoded_data_for_da);
                     // let da_block_height = submit_to_da(&encoded_data_for_da).await;
                     // println!("this is the block_height: {}", da_block_height);
-                }
+                } */
                 lock.init_tx_pool(block_height);
             }
         }
@@ -1215,7 +1215,7 @@ mod tests {
     }
 }
 
-async fn submit_to_da(data: &str) -> String {
+/* async fn submit_to_da(data: &str) -> String {
     dotenv().ok();
     let da_host = env::var("DA_HOST").expect("DA_HOST must be set");
     let da_namespace = env::var("DA_NAMESPACE").expect("DA_NAMESPACE must be set");
@@ -1267,4 +1267,4 @@ fn encode_data_to_base64(original: &str) -> String {
     // Convert bytes to base64
     let base64_str: String = general_purpose::STANDARD.encode(&bytes);
     base64_str
-}
+} */

@@ -34,3 +34,5 @@ cairo_venv
 .idea
 
 .env
+
+/epool

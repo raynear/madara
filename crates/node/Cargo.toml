@@ -27,6 +27,7 @@ clap = { workspace = true, features = ["derive"] }
 futures = { workspace = true, features = ["thread-pool"] }
 log = { workspace = true }
 serde = { workspace = true }
+sync-block = { path = "../../crates/client/sync-block" }
 
 frame-system = { workspace = true }
 sc-cli = { workspace = true }
