@@ -5,7 +5,7 @@
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, UNIX_EPOCH};
 use std::{env, time};
 
 use base64::engine::general_purpose;
@@ -460,6 +460,10 @@ where
                 lock.len(block_height) as u64
             };
 
+            let start = std::time::SystemTime::now();
+            let since_the_epoch = start.duration_since(UNIX_EPOCH).expect("Time went backwards");
+            println!("Decrypt Start in {:?}", since_the_epoch);
+
             for order in 0..cnt {
                 let block_height = self.parent_number.to_string().parse::<u64>().unwrap() + 1;
                 let best_block_hash = self.client.info().best_hash;
@@ -546,6 +550,10 @@ where
                                     return;
                                 }
                             }
+
+                            let end = std::time::SystemTime::now();
+                            let since_the_epoch = end.duration_since(UNIX_EPOCH).expect("Time went backwards");
+                            println!("Decrypt {} End in {:?}", order, since_the_epoch);
 
                             let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
                             let extrinsic = client
