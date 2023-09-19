@@ -35,6 +35,8 @@ pub struct Txs {
     decrypted_cnt: u64,
     /// current order
     order: u64,
+    /// not encrypted tx count
+    not_encrypted_cnt: u64,
     /// close flag
     closed: bool,
 }
@@ -48,6 +50,7 @@ impl Txs {
             key_received: HashMap::default(),
             decrypted_cnt: 0,
             order: 0,
+            not_encrypted_cnt: 0,
             closed: false,
         }
     }
@@ -68,6 +71,14 @@ impl Txs {
         }
     }
 
+    /// increase not encrypted count
+    pub fn increase_not_encrypted_cnt(&mut self) -> u64 {
+        self.not_encrypted_cnt = self.not_encrypted_cnt + 1;
+        // println!("{}", self.not_encrypted_cnt);
+        self.increase_order();
+        self.not_encrypted_cnt
+    }
+
     /// is close
     pub fn is_closed(&self) -> bool {
         // println!("is closed {}", self.closed);
@@ -75,10 +86,9 @@ impl Txs {
     }
 
     /// close
-    pub fn close(&mut self) {
-        // println!("close!!");
+    pub fn close(&mut self) -> bool {
         self.closed = true;
-        // println!("closed? {}", self.closed);
+        self.closed
     }
 
     /// add tx to temporary pool
@@ -120,7 +130,9 @@ impl Txs {
     /// get encrypted tx count
     /// it's not order
     pub fn get_tx_cnt(&self) -> u64 {
-        self.encrypted_pool.len() as u64
+        // println!("{}, {}", self.encrypted_pool.len() as u64, self.not_encrypted_cnt);
+        let tmp = self.encrypted_pool.len() as u64 + self.not_encrypted_cnt;
+        tmp
     }
 
     /// increase decrypted tx count
@@ -131,7 +143,8 @@ impl Txs {
 
     /// get decrypted tx count
     pub fn get_decrypted_cnt(&self) -> u64 {
-        self.decrypted_cnt
+        // println!("{}, {}", self.decrypted_cnt as u64, self.not_encrypted_cnt);
+        self.decrypted_cnt + self.not_encrypted_cnt
     }
 
     /// update key received information
@@ -183,8 +196,8 @@ impl EncryptedPool {
     }
 
     /// new epool
-    pub fn new() -> Self {
-        Self { txs: HashMap::default(), enabled: true }
+    pub fn new(encrypted_mempool: bool) -> Self {
+        Self { txs: HashMap::default(), enabled: encrypted_mempool }
     }
 
     /// add new Txs for block_height
@@ -221,7 +234,7 @@ impl EncryptedPool {
                 println!("txs not exist");
                 self.txs.insert(block_height, Txs::new());
                 match self.txs.get(&block_height) {
-                    Some(txs) => println!("exist"),
+                    Some(_txs) => println!("exist"),
                     None => println!("not exist"),
                 };
                 match self.txs.get_mut(&block_height) {
@@ -241,6 +254,27 @@ impl EncryptedPool {
                 None => Err("get not exist tx from map"),
             },
             None => Err("get not exist tx from map"),
+        }
+    }
+
+    ///
+    pub fn initialize_if_not_exist(&mut self, block_height: u64) {
+        match self.txs.get_mut(&block_height) {
+            Some(_txs) => {
+                println!("txs exist add tx");
+            }
+            None => {
+                println!("txs not exist");
+                self.txs.insert(block_height, Txs::new());
+            }
+        }
+    }
+
+    /// increase not encrypted count
+    pub fn increase_not_encrypted_cnt(&mut self, block_height: u64) -> Result<u64, &str> {
+        match self.txs.get_mut(&block_height) {
+            Some(txs) => Ok(txs.increase_not_encrypted_cnt()),
+            None => Err("increase_not_encrypted_cnt not exist tx from map"),
         }
     }
 
@@ -277,7 +311,7 @@ impl EncryptedPool {
     }
 
     /// close
-    pub fn close(&mut self, block_height: u64) {
+    pub fn close(&mut self, block_height: u64) -> Result<bool, &str> {
         match self.txs.get_mut(&block_height) {
             Some(txs) => {
                 let raw_txs: Vec<_> = txs.encrypted_pool.values().cloned().collect();
@@ -286,9 +320,7 @@ impl EncryptedPool {
                 println!("Bye world");
                 txs.close();
             }
-            None => {
-                println!("not exist? cannot close")
-            }
+            None => Err("not exist? cannot close"),
         }
     }
 
@@ -315,7 +347,10 @@ impl EncryptedPool {
     pub fn get_tx_cnt(&self, block_height: u64) -> u64 {
         match self.txs.get(&block_height) {
             Some(txs) => txs.get_tx_cnt(),
-            None => 0,
+            None => {
+                println!("no txs on {}", block_height);
+                0
+            }
         }
     }
 
