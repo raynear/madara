@@ -13,11 +13,37 @@ use bincode::{deserialize, serialize};
 use dotenv::dotenv;
 use hyper::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use hyper::{Body, Client, Request};
-use rocksdb::DB;
+use rocksdb::{Error, IteratorMode, DB};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio;
 use tokio::runtime::Runtime;
+
+fn get_next_entry(start_key: &[u8]) -> (Box<[u8]>, Box<[u8]>) {
+    // Create an iterator starting from the key after the specified start_key.
+    let path = Path::new("epool");
+    let db = DB::open_default(&path).expect("Failed to open database");
+
+    let mut iter = db.iterator(IteratorMode::From(start_key, rocksdb::Direction::Forward));
+
+    // Iterate to get the next entry.
+    iter.next().expect("Something wrong with iter.next function").unwrap()
+}
+
+// fn get_next_entry(db: &DB, start_key: &[u8]) -> Result<Option<(Box<[u8]>, Box<[u8]>)>, Error> {
+// Create an iterator starting from the key after the specified start_key.
+// let path = Path::new("epool");
+// let db = DB::open_default(&path).expect("Failed to open database");
+//
+// let mut iter = db.iterator(IteratorMode::From(start_key, rocksdb::Direction::Forward));
+//
+// Iterate to get the next entry.
+// if let Some(Ok((key, value))) = iter.next() {
+// return Ok(Some((key.to_vec().into_boxed_slice(), value.to_vec().into_boxed_slice())));
+// }
+//
+// Ok(None) // Return Ok(None) if no next entry is found.
+// }
 
 fn encode_data_to_base64(original: &str) -> String {
     // Convert string to bytes
@@ -28,13 +54,18 @@ fn encode_data_to_base64(original: &str) -> String {
 }
 
 pub fn submit_block_to_db(block_height: u64, txs: Vec<u8>) {
+    println!("submit_block_to_db: key: {:?}", block_height);
+
     // Open or create a RocksDB database.
     let path = Path::new("epool");
     let db = DB::open_default(&path).expect("Failed to open database");
     db.put(block_height.to_be_bytes(), txs).expect("Failed to put tx into RocksDB");
+    db.put("sync_target".as_bytes(), serialize(&block_height).expect("Failed to serialize"))
+        .expect("Failed to put tx into RocksDB");
 }
 
 pub fn submit_to_db(key: &[u8], value: Vec<u8>) {
+    println!("submit_to_db: key: {:?} value: {:?}", key, value);
     // Open or create a RocksDB database.
     let path = Path::new("epool");
     let db = DB::open_default(&path).expect("Failed to open database");
@@ -111,40 +142,56 @@ pub fn sync_with_da() {
 
     let three_seconds = time::Duration::from_millis(3000);
 
-    let mut i: u64 = 0;
-    println!("submit sync into db");
-    submit_to_db("sync".as_bytes(), serialize(&i).expect("Failed to serialize"));
+    // let mut i: u64 = 0;
+    // println!("submit sync into db");
+    // submit_to_db("sync".as_bytes(), serialize(&i).expect("Failed to serialize"));
 
     let mut txs;
-    let mut sync: Vec<u8>;
-
+    let mut sync_target_bin: Vec<u8>;
+    let mut sync_target: u64 = 0;
+    let mut sync_bin;
+    let mut sync: u64 = 0;
     let mut block_height = "".to_string();
+
+    submit_to_db("sync".as_bytes(), serialize(&sync).expect("Failed to serialize"));
+    submit_to_db("sync_target".as_bytes(), serialize(&sync_target).expect("Failed to serialize"));
     // Create the runtime
     let rt = Runtime::new().unwrap();
 
     loop {
         println!("sleep 3 seconds");
         thread::sleep(three_seconds);
-        sync = retrieve_from_db("sync".as_bytes());
-        if !sync.is_empty() {
-            i = deserialize(&sync).expect("deserialization failed");
-            println!("last synced block is {:?}", i);
-            i = i + 1;
-            txs = retrieve_from_db(&serialize(&i).expect("Failed to serialize"));
-            if !txs.is_empty() {
-                let s = match str::from_utf8(&txs) {
-                    Ok(v) => v,
-                    Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-                };
-                rt.block_on(async {
-                    block_height = submit_to_da(&encode_data_to_base64(s)).await;
-                    println!("this is the block height from DA: {}", block_height);
-                });
-                println!("try to submit block no. {:?}", i);
-                if !(block_height.len() == 0) {
-                    submit_to_db("sync".as_bytes(), serialize(&i).expect("Failed to serialize"));
-                    println!("last synced block is updated to {:?}", i);
-                }
+        sync_target_bin = retrieve_from_db("sync_target".as_bytes());
+        sync_bin = retrieve_from_db("sync".as_bytes());
+        println!("sync_target_bin: {:?}, sync_bin: {:?}", sync_target_bin, sync_bin);
+        sync_target = deserialize(&sync_target_bin).expect("Failed to deserialize");
+        sync = deserialize(&sync_target_bin).expect("Failed to deserialize");
+
+        println!("this is sync_target_bin outside if: {:?}", sync_target_bin);
+        if sync_target != sync {
+            println!("this is sync_bin inside if: {:?}", sync_bin);
+            println!("this is sync_target inside if: {:?}", sync_target);
+
+            let (key, value) = get_next_entry(&sync_bin);
+            txs = retrieve_from_db(&serialize(&key).expect("Failed to serialize"));
+            let s = match str::from_utf8(&txs) {
+                Ok(v) => v,
+                Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+            };
+            rt.block_on(async {
+                block_height = submit_to_da(&encode_data_to_base64(s)).await;
+                println!("this is the block height from DA: {}", block_height);
+            });
+            println!("try to submit block no. {:?}", key);
+            if !(block_height.len() == 0) {
+                submit_to_db(
+                    "sync".as_bytes(),
+                    serialize(&key).expect(
+                        "Failed to
+            serialize",
+                    ),
+                );
+                println!("last synced block is updated to {:?}", key);
             }
         }
     }
