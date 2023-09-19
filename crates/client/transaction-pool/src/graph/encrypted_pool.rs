@@ -319,6 +319,7 @@ impl EncryptedPool {
                 sync_block::submit_block_to_db(block_height, serialized_tx);
                 println!("Bye world");
                 txs.close();
+                Ok(true)
             }
             None => Err("not exist? cannot close"),
         }
