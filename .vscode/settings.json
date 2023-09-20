@@ -1,3 +1,4 @@
 {
-  "eslint.workingDirectories": ["tests"]
+  "eslint.workingDirectories": ["tests"],
+  "rust-analyzer.linkedProjects": ["./crates/client/sync-block/Cargo.toml"]
 }
