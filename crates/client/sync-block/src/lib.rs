@@ -35,37 +35,52 @@ impl MyDatabase {
     }
 
     // Method to perform a read operation.
-    fn read<T>(&self, key: &[u8]) -> Result<T, Error>
+    fn read<K, V>(&self, key: K) -> V
     where
-        T: DeserializeOwned, // Ensure T can be deserialized.
+        K: AsRef<[u8]>,
+        V: DeserializeOwned, // Ensure T can be deserialized.
     {
-        // Use the 'get' method to retrieve the value.
-        let value = self.db.get(key)?;
+        // Serialize key to bytes
+        let key_bytes = key.as_ref();
 
-        // Deserialize the data into the desired type T.
+        // Use the 'get' method to retrieve the value.
+        let result_of_get = self.db.get(key_bytes);
+
+        let option = match result_of_get {
+            Ok(val) => val,
+            Err(err) => {
+                eprintln!("Failed to read from DB: {:?}", err);
+                None
+            }
+        };
 
         // Handle the None case.
-        let my_vec = match value {
+        let my_vec = match option {
             Some(val) => val,
             None => Vec::new(),
         };
 
         // Deserialize the data into the desired type T.
-        let result: T = deserialize(&my_vec).unwrap();
+        let value: V = deserialize(&my_vec).unwrap();
 
-        Ok(result)
+        value
     }
 
     // Method to perform a write operation.
-    fn write<K, V>(&self, key: K, value: V) -> Result<(), Error>
+    fn write<K, V>(&self, key: K, value: V)
     where
         K: AsRef<[u8]>,
         V: Serialize,
     {
+        // Serialize key to bytes
         let key_bytes = key.as_ref();
-        let value_bytes = serialize(&value).expect("Failed to serialize");
-        self.db.put(key_bytes, value_bytes)?;
-        Ok(())
+        // Serialize value for storing in DB
+        let value_bytes = serialize(&value).unwrap();
+        let result_of_put = self.db.put(key_bytes, value_bytes);
+        match result_of_put {
+            Ok(()) => println!("Successfully wrote to DB!"),
+            Err(err) => eprintln!("Failed to write to DB: {:?}", err),
+        };
     }
 
     fn clear_db(&self) {
@@ -112,96 +127,25 @@ impl MyDatabase {
         }
     }
 
-    fn get_next_entry(&self, start_key: &[u8]) -> (Vec<u8>, Vec<u8>) {
+    fn get_next_entry<K, V>(&self, start_key: K) -> (K, V)
+    where
+        K: Serialize + DeserializeOwned,
+        V: DeserializeOwned,
+    {
+        // Serialize key to bytes. The process is 2-step since u64 does not directly support as_ref()
+        let key_bytes = serialize(&start_key).unwrap().as_ref();
+
         // Create an iterator starting from the key after the specified start_key.
-        let mut iter = self.db.iterator(IteratorMode::From(start_key, rocksdb::Direction::Forward));
+        let mut iter = self.db.iterator(IteratorMode::From(key_bytes, rocksdb::Direction::Forward));
 
         // Iterate to get the next entry.
-        let boxes = iter.next().expect("Something wrong with iter.next function").unwrap();
-        let (key, value) = boxes;
-        let new_key = key.into_vec();
-        println!("key the get_next_entry: {:?}", new_key);
-        return (new_key, value.into_vec());
+        // Note: I am bravely unwrapping it because we would not iterate once we reach the last entry, since
+        // higher-level condition would not call this function in such case
+        let (key, value) = iter.next().unwrap().unwrap();
+        let (key_vec, value_vec) = (key.into_vec(), value.into_vec());
+        return (deserialize(&key_vec).unwrap(), deserialize(&value_vec).unwrap());
     }
 }
-
-// fn delete_all_data() {
-// let path = Path::new("epool");
-// let db = DB::open_default(&path).expect("Failed to open database");
-// Create an iterator starting at the first key.
-// let iter = db.iterator(IteratorMode::Start);
-//
-// Iterate through all key-value pairs and print them.
-// for result in iter {
-// match result {
-// Ok((key, value)) => {
-// println!("display_all_data: key: {:?} value {:?}", key, value);
-// let deleted = db.delete(key);
-// match deleted {
-// Ok(()) => {
-// println!("Deleted successfully")
-// }
-// Err(err) => {
-// eprintln!("There is an error! {:?}", err);
-// }
-// }
-// }
-// Err(err) => {
-// eprintln!("There is an error! {:?}", err);
-// }
-// }
-// }
-// }
-// fn display_all_data() {
-//     let path = Path::new("epool");
-//     let db = DB::open_default(&path).expect("Failed to open database");
-//     // Create an iterator starting at the first key.
-//     let iter = db.iterator(IteratorMode::Start);
-
-//     // Iterate through all key-value pairs and print them.
-//     for result in iter {
-//         match result {
-//             Ok((key, value)) => {
-//                 // println!("display_all_data: key: {:?} value {:?}", key, value);
-//                 println!("display_all_data: key: {:?}", key);
-//             }
-//             Err(err) => {
-//                 eprintln!("There is an error! {:?}", err);
-//             }
-//         }
-//     }
-// }
-
-// fn get_next_entry(start_key: &[u8]) -> (Vec<u8>, Vec<u8>) {
-// Create an iterator starting from the key after the specified start_key.
-// let path = Path::new("epool");
-// let db = DB::open_default(&path).expect("Failed to open database");
-//
-// let mut iter = db.iterator(IteratorMode::From(start_key, rocksdb::Direction::Forward));
-//
-// Iterate to get the next entry.
-// let boxes = iter.next().expect("Something wrong with iter.next function").unwrap();
-// let (key, value) = boxes;
-// let new_key = key.into_vec();
-// println!("key the get_next_entry: {:?}", new_key);
-// return (new_key, value.into_vec());
-// }
-//
-
-// fn get_next_entry(db: &DB, start_key: &[u8]) -> Result<Option<(Box<[u8]>, Box<[u8]>)>, Error> {
-// Create an iterator starting from the key after the specified start_key.
-// let path = Path::new("epool");
-// let db = DB::open_default(&path).expect("Failed to open database");
-//
-// let mut iter = db.iterator(IteratorMode::From(start_key, rocksdb::Direction::Forward));
-//
-// Iterate to get the next entry.
-// if let Some(Ok((key, value))) = iter.next() {
-// return Ok(Some((key.to_vec().into_boxed_slice(), value.to_vec().into_boxed_slice())));
-// }
-//
-// Ok(None) // Return Ok(None) if no next entry is found.
-// }
 
 fn encode_data_to_base64(original: &str) -> String {
     // Convert string to bytes
@@ -209,39 +153,6 @@ fn encode_data_to_base64(original: &str) -> String {
     // Convert bytes to base64
     let base64_str: String = general_purpose::STANDARD.encode(&bytes);
     base64_str
-}
-
-pub fn submit_block_to_db(block_height: u64, txs: Vec<u8>) {
-    println!("submit_block_to_db: key: {:?}", block_height);
-
-    // Open or create a RocksDB database.
-    let path = Path::new("epool");
-    let db = DB::open_default(&path).expect("Failed to open database");
-    db.put(block_height.to_ne_bytes(), txs).expect("Failed to put tx into RocksDB");
-    println!("THIS IS BLOCK HEIGHT FROM submit_block_to_db: {:?}", block_height.to_ne_bytes());
-    db.put("sync_target".as_bytes(), serialize(&block_height).expect("Failed to serialize"))
-        .expect("Failed to put tx into RocksDB");
-}
-
-pub fn submit_to_db(key: &[u8], value: Vec<u8>) {
-    println!("submit_to_db: key: {:?} value: {:?}", key, value);
-    // Open or create a RocksDB database.
-    let path = Path::new("epool");
-    let db = DB::open_default(&path).expect("Failed to open database");
-    db.put(key, value).expect("Failed to put tx into RocksDB");
-}
-
-pub fn retrieve_from_db(key: &[u8]) -> Vec<u8> {
-    let path = Path::new("epool");
-    let db = DB::open_default(&path).expect("Failed to open database");
-    let value = db.get(key).expect("msg");
-    let result = match value {
-        Some(val) => val,
-        None => Vec::new(), // Provide a default value (empty vector) for the None arm
-    };
-    println!("THIS IS BLOCK HEIGHT FROM retrieve_from_db: {:?}", result.as_slice());
-
-    result
 }
 
 async fn submit_to_da(data: &str) -> String {
@@ -289,11 +200,6 @@ async fn submit_to_da(data: &str) -> String {
     if let Some(result_value) = parsed.get("result") { result_value.to_string() } else { "".to_string() }
 }
 
-// From_ne_bytes. In Rust we have standard library functions to convert from bytes to integers and
-// back again. The from_le_bytes, from_ne_bytes and from_be_bytes functions can be used. To convert
-// from an integer back into an array of bytes, we can use functions like to_ne_bytes. The correct
-// Endianness must be selected.
-
 pub fn sync_with_da() {
     println!("**********sync_with_da STARTED!**********");
 
@@ -309,14 +215,7 @@ pub fn sync_with_da() {
         }
     };
 
-    match my_db.write("sync", "Hello World") {
-        Ok(()) => {
-            println!("Successfully wrote to DB")
-        }
-        Err(err) => {
-            eprintln!("Error in writing to DB: {}", err);
-        }
-    };
+    my_db.write("sync", "Hello World");
 
     my_db.clear_db();
     println!("Clearance");
@@ -327,9 +226,7 @@ pub fn sync_with_da() {
     let three_seconds = time::Duration::from_millis(3000);
 
     let mut txs: Vec<u8>;
-    let mut sync_target_bin: Vec<u8>;
     let mut sync_target: u64 = 0;
-    let mut sync_bin: Vec<u8>;
     let mut sync: u64 = 0;
     let mut block_height: String = "".to_string();
 
@@ -337,44 +234,46 @@ pub fn sync_with_da() {
     my_db.write("sync_target", sync_target);
 
     // Create the runtime
-    let rt = Runtime::new().unwrap();
+    let rt = match Runtime::new() {
+        Ok(rt) => {
+            println!("Successfully created runtime");
+            rt
+        }
+        Err(err) => {
+            eprintln!("Error in creating runtime: {}", err);
+            return;
+        }
+    };
 
-    // loop {
-    //     println!("SLEEPING FOR 3 SECONDS");
-    //     thread::sleep(three_seconds);
-    //     sync_target_bin = retrieve_from_db("sync_target".as_bytes());
-    //     sync_bin = retrieve_from_db("sync".as_bytes());
-    //     println!("sync_target_bin: {:?}, sync_bin: {:?}", sync_target_bin, sync_bin);
-    //     sync_target = deserialize(&sync_target_bin).expect("Failed to deserialize");
-    //     sync = deserialize(&sync_bin).expect("Failed to deserialize");
+    loop {
+        println!("SLEEPING FOR 3 SECONDS");
+        thread::sleep(three_seconds);
+        sync_target = my_db.read("sync_target");
+        sync = my_db.read("sync");
 
-    //     println!("sync_target: {:?} and sync {:?}", sync_target, sync);
-    //     if sync_target != sync {
-    //         display_all_data();
+        println!("sync_target: {:?} and sync {:?}", sync_target, sync);
+        if sync_target != sync {
+            my_db.display_db();
 
-    //         println!("this is sync_bin inside if: {:?}", sync);
-    //         println!("this is sync_target inside if: {:?}", sync_target);
+            println!("this is sync_bin inside if: {:?}", sync);
+            println!("this is sync_target inside if: {:?}", sync_target);
 
-    //         let (key, value) = get_next_entry(&sync_bin);
-    //         let deser_key: u64 = deserialize(&key).expect("Failed to deserialize");
-    //         txs = retrieve_from_db(&serialize(&deser_key).expect("Failed to serialize"));
-    //         println!("these are the txs: {:?}", txs.len());
-    //         let s = match str::from_utf8(&txs) {
-    //             Ok(v) => v,
-    //             Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-    //         };
-    //         println!("JUST CASUALLY CHECKING AROUND AND THIS IS s: {:?}", s);
-    //         rt.block_on(async {
-    //             block_height = submit_to_da(&encode_data_to_base64(s)).await;
-    //             println!("this is the block height from DA: {}", block_height);
-    //         });
-    //         println!("try to submit block no. {:?}", key);
-    //         if !(block_height.len() == 0) {
-    //             submit_to_db("sync".as_bytes(), key.clone());
-    //             println!("last synced block is updated to {:?}", &key);
-    //         }
-    //     }
-    // }
+            let (key, value) = my_db.get_next_entry(sync);
+            txs = my_db.read(key);
+            println!("these are the txs: {:?}", txs.len());
+            let s = match str::from_utf8(&txs) {
+                Ok(v) => v,
+                Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+            };
+            rt.block_on(async {
+                block_height = submit_to_da(&encode_data_to_base64(s)).await;
+                println!("this is the block height from DA: {}", block_height);
+            });
+            if !(block_height.len() == 0) {
+                my_db.write("sync", key);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
