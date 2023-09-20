@@ -37,11 +37,11 @@ impl MyDatabase {
     // Method to perform a read operation.
     fn read<K, V>(&self, key: K) -> V
     where
-        K: AsRef<[u8]>,
+        K: Serialize,
         V: DeserializeOwned, // Ensure T can be deserialized.
     {
         // Serialize key to bytes
-        let key_bytes = key.as_ref();
+        let key_bytes = serialize(&key).unwrap();
 
         // Use the 'get' method to retrieve the value.
         let result_of_get = self.db.get(key_bytes);
@@ -69,11 +69,11 @@ impl MyDatabase {
     // Method to perform a write operation.
     fn write<K, V>(&self, key: K, value: V)
     where
-        K: AsRef<[u8]>,
+        K: Serialize,
         V: Serialize,
     {
         // Serialize key to bytes
-        let key_bytes = key.as_ref();
+        let key_bytes = serialize(&key).unwrap();
         // Serialize value for storing in DB
         let value_bytes = serialize(&value).unwrap();
         let result_of_put = self.db.put(key_bytes, value_bytes);
