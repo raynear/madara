@@ -22,7 +22,9 @@ use mc_rpc::submit_extrinsic_with_order;
 use mc_transaction_pool::decryptor::Decryptor;
 use mc_transaction_pool::{EPool, EncryptedTransactionPool};
 use mp_starknet::execution::types::Felt252Wrapper;
-use mp_starknet::transaction::types::{EncryptedInvokeTransaction, Transaction as MPTransaction, TxType};
+use mp_starknet::transaction::types::{
+    EncryptedInvokeTransaction, InvokeTransaction, Transaction as MPTransaction, TxType,
+};
 use pallet_starknet::runtime_api::{ConvertTransactionRuntimeApi, StarknetRuntimeApi};
 use prometheus_endpoint::Registry as PrometheusRegistry;
 use sc_block_builder::{BlockBuilderApi, BlockBuilderProvider};
@@ -413,6 +415,11 @@ where
             lock.is_enabled()
         };
 
+        let using_external_decryptor = {
+            let lock = epool.lock().await;
+            lock.is_using_external_decryptor()
+        };
+
         let closed = {
             let lock = epool.lock().await;
             let exist = lock.exist(block_height);
@@ -496,9 +503,16 @@ where
                             }
 
                             let decryptor = Decryptor::new();
-                            let invoke_tx = decryptor
-                                .decrypt_encrypted_invoke_transaction(encrypted_invoke_transaction, None)
-                                .await;
+                            let invoke_tx: InvokeTransaction = if using_external_decryptor {
+                                decryptor
+                                    .delegate_to_decrypt_encrypted_invoke_transaction(
+                                        encrypted_invoke_transaction,
+                                        None,
+                                    )
+                                    .await
+                            } else {
+                                decryptor.decrypt_encrypted_invoke_transaction(encrypted_invoke_transaction, None).await
+                            };
                             // println!("decrypt done on block_height {} order {}", block_height, order);
 
                             {
@@ -1223,56 +1237,56 @@ mod tests {
     }
 }
 
-/* async fn submit_to_da(data: &str) -> String {
-    dotenv().ok();
-    let da_host = env::var("DA_HOST").expect("DA_HOST must be set");
-    let da_namespace = env::var("DA_NAMESPACE").expect("DA_NAMESPACE must be set");
-    let da_auth_token = env::var("DA_AUTH_TOKEN").expect("DA_AUTH_TOKEN must be set");
-    let da_auth = format!("Bearer {}", da_auth_token);
-
-    // println!("this is the da_namespace: {:?}", da_namespace);
-
-    let client = Client::new();
-    let rpc_request = json!({
-        "jsonrpc": "2.0",
-        "method": "blob.Submit",
-        "params": [
-            [
-                {
-                    "namespace": da_namespace,
-                    "data": data,
-                }
-            ]
-        ],
-        "id": 1,
-    });
-
-    let uri = std::env::var("da_uri").unwrap_or(da_host.into());
-
-    // Token should be removed from code.
-    let req = Request::post(uri.as_str())
-        .header(AUTHORIZATION, HeaderValue::from_str(da_auth.as_str()).unwrap())
-        .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
-        .body(Body::from(rpc_request.to_string()))
-        .unwrap();
-    let response_future = client.request(req);
-
-    let resp = tokio::time::timeout(Duration::from_secs(100), response_future)
-        .await
-        .map_err(|_| "Request timed out")
-        .unwrap()
-        .unwrap();
-
-    let response_body = hyper::body::to_bytes(resp.into_body()).await.unwrap();
-    let parsed: Value = serde_json::from_slice(&response_body).unwrap();
-
-    if let Some(result_value) = parsed.get("result") { result_value.to_string() } else { "".to_string() }
-}
-
-fn encode_data_to_base64(original: &str) -> String {
-    // Convert string to bytes
-    let bytes = original.as_bytes();
-    // Convert bytes to base64
-    let base64_str: String = general_purpose::STANDARD.encode(&bytes);
-    base64_str
-} */
+// async fn submit_to_da(data: &str) -> String {
+// dotenv().ok();
+// let da_host = env::var("DA_HOST").expect("DA_HOST must be set");
+// let da_namespace = env::var("DA_NAMESPACE").expect("DA_NAMESPACE must be set");
+// let da_auth_token = env::var("DA_AUTH_TOKEN").expect("DA_AUTH_TOKEN must be set");
+// let da_auth = format!("Bearer {}", da_auth_token);
+//
+// println!("this is the da_namespace: {:?}", da_namespace);
+//
+// let client = Client::new();
+// let rpc_request = json!({
+// "jsonrpc": "2.0",
+// "method": "blob.Submit",
+// "params": [
+// [
+// {
+// "namespace": da_namespace,
+// "data": data,
+// }
+// ]
+// ],
+// "id": 1,
+// });
+//
+// let uri = std::env::var("da_uri").unwrap_or(da_host.into());
+//
+// Token should be removed from code.
+// let req = Request::post(uri.as_str())
+// .header(AUTHORIZATION, HeaderValue::from_str(da_auth.as_str()).unwrap())
+// .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
+// .body(Body::from(rpc_request.to_string()))
+// .unwrap();
+// let response_future = client.request(req);
+//
+// let resp = tokio::time::timeout(Duration::from_secs(100), response_future)
+// .await
+// .map_err(|_| "Request timed out")
+// .unwrap()
+// .unwrap();
+//
+// let response_body = hyper::body::to_bytes(resp.into_body()).await.unwrap();
+// let parsed: Value = serde_json::from_slice(&response_body).unwrap();
+//
+// if let Some(result_value) = parsed.get("result") { result_value.to_string() } else {
+// "".to_string() } }
+//
+// fn encode_data_to_base64(original: &str) -> String {
+// Convert string to bytes
+// let bytes = original.as_bytes();
+// Convert bytes to base64
+// let base64_str: String = general_purpose::STANDARD.encode(&bytes);
+// base64_str
+// }

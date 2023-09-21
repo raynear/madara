@@ -69,6 +69,7 @@ pub fn new_partial<BIQ>(
     config: &Configuration,
     build_import_queue: BIQ,
     encrypted_mempool: bool,
+    using_external_decryptor: bool,
 ) -> Result<
     sc_service::PartialComponents<
         FullClient,
@@ -149,6 +150,7 @@ where
         task_manager.spawn_essential_handle(),
         client.clone(),
         encrypted_mempool,
+        using_external_decryptor,
     );
 
     let (grandpa_block_import, grandpa_link) = sc_consensus_grandpa::block_import(
@@ -250,6 +252,7 @@ pub fn new_full(
     config: Configuration,
     sealing: Option<Sealing>,
     encrypted_mempool: bool,
+    using_external_decryptor: bool,
 ) -> Result<TaskManager, ServiceError> {
     let build_import_queue =
         if sealing.is_some() { build_manual_seal_import_queue } else { build_aura_grandpa_import_queue };
@@ -263,7 +266,7 @@ pub fn new_full(
         select_chain,
         transaction_pool,
         other: (block_import, grandpa_link, mut telemetry, madara_backend),
-    } = new_partial(&config, build_import_queue, encrypted_mempool)?;
+    } = new_partial(&config, build_import_queue, encrypted_mempool, using_external_decryptor)?;
 
     let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
 
@@ -596,9 +599,13 @@ type ChainOpsResult = Result<
     ServiceError,
 >;
 
-pub fn new_chain_ops(mut config: &mut Configuration, encrypted_mempool: bool) -> ChainOpsResult {
+pub fn new_chain_ops(
+    mut config: &mut Configuration,
+    encrypted_mempool: bool,
+    using_external_decryptor: bool,
+) -> ChainOpsResult {
     config.keystore = sc_service::config::KeystoreConfig::InMemory;
     let sc_service::PartialComponents { client, backend, import_queue, task_manager, other, .. } =
-        new_partial::<_>(config, build_aura_grandpa_import_queue, encrypted_mempool)?;
+        new_partial::<_>(config, build_aura_grandpa_import_queue, encrypted_mempool, using_external_decryptor)?;
     Ok((client, backend, import_queue, task_manager, other.3))
 }

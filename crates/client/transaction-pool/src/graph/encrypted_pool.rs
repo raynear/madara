@@ -170,21 +170,15 @@ impl Txs {
 pub struct EncryptedPool {
     /// Map of Txs, key:value = block_height:Txs
     txs: HashMap<u64, Txs>,
+
     /// epool enabler. if whole part is splitted by package. it have to be removed.
     enabled: bool,
+
+    /// using external decryptor
+    using_external_decryptor: bool,
 }
 
 impl EncryptedPool {
-    /// enable epool
-    pub fn enable_encrypted_mempool(&mut self) {
-        self.enabled = true;
-    }
-
-    /// disable epool
-    pub fn disable_encrypted_mempool(&mut self) {
-        self.enabled = false;
-    }
-
     /// check epool is enabled
     pub fn is_enabled(&self) -> bool {
         self.enabled
@@ -195,9 +189,14 @@ impl EncryptedPool {
         !self.enabled
     }
 
+    /// check epool is enabled
+    pub fn is_using_external_decryptor(&self) -> bool {
+        self.using_external_decryptor
+    }
+
     /// new epool
-    pub fn new(encrypted_mempool: bool) -> Self {
-        Self { txs: HashMap::default(), enabled: encrypted_mempool }
+    pub fn new(encrypted_mempool: bool, using_external_decryptor: bool) -> Self {
+        Self { txs: HashMap::default(), enabled: encrypted_mempool, using_external_decryptor }
     }
 
     /// add new Txs for block_height

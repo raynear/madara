@@ -45,6 +45,9 @@ pub struct ExtendedRunCmd {
 
     #[clap(long)]
     pub encrypted_mempool: bool,
+
+    #[clap(long)]
+    pub using_external_decryptor: bool,
 }
 
 #[allow(clippy::large_enum_variant)]
