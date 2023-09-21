@@ -13,13 +13,15 @@ use bincode::{deserialize, serialize};
 use dotenv::dotenv;
 use hyper::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use hyper::{Body, Client, Request};
+use lazy_static::lazy::Lazy;
+use lazy_static::lazy_static;
 use rocksdb::{Error, ErrorKind, IteratorMode, DB};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio;
-use tokio::runtime::Runtime; // Import the Error type from rocksdb crate
-
+use tokio::runtime::Runtime; // Import Lazy from the lazy_static crate
+// Import the Error type from rocksdb crate
 // Define a struct to hold the DB instance.
 pub struct MyDatabase {
     db: DB,
@@ -67,7 +69,7 @@ impl MyDatabase {
     }
 
     // Method to perform a write operation.
-    fn write<K, V>(&self, key: K, value: V)
+    pub fn write<K, V>(&self, key: K, value: V)
     where
         K: Serialize,
         V: Serialize,
@@ -127,13 +129,13 @@ impl MyDatabase {
         }
     }
 
-    fn get_next_entry<K, V>(&self, start_key: K) -> (K, V)
+    fn get_next_entry<K>(&self, start_key: K) -> K
     where
         K: Serialize + DeserializeOwned,
-        V: DeserializeOwned,
     {
         // Serialize key to bytes. The process is 2-step since u64 does not directly support as_ref()
-        let key_bytes = serialize(&start_key).unwrap().as_ref();
+        let serialized = serialize(&start_key).unwrap();
+        let key_bytes = serialized.as_ref();
 
         // Create an iterator starting from the key after the specified start_key.
         let mut iter = self.db.iterator(IteratorMode::From(key_bytes, rocksdb::Direction::Forward));
@@ -141,10 +143,19 @@ impl MyDatabase {
         // Iterate to get the next entry.
         // Note: I am bravely unwrapping it because we would not iterate once we reach the last entry, since
         // higher-level condition would not call this function in such case
-        let (key, value) = iter.next().unwrap().unwrap();
-        let (key_vec, value_vec) = (key.into_vec(), value.into_vec());
-        return (deserialize(&key_vec).unwrap(), deserialize(&value_vec).unwrap());
+        let key = iter.next().unwrap().unwrap();
+        let key_vec = key.1.into_vec();
+        return deserialize(&key_vec).unwrap();
     }
+}
+
+// Create a global instance of MyDatabase that can be accessed from other modules.
+// Create a global instance of MyDatabase that can be accessed from other modules.
+lazy_static! {
+    pub static ref GLOBAL_DATABASE: MyDatabase = MyDatabase::open().unwrap_or_else(|err| {
+        eprintln!("Failed to open database: {:?}", err);
+        std::process::exit(1); // Exit the program on error
+    });
 }
 
 fn encode_data_to_base64(original: &str) -> String {
@@ -203,24 +214,24 @@ async fn submit_to_da(data: &str) -> String {
 pub fn sync_with_da() {
     println!("**********sync_with_da STARTED!**********");
 
-    // Open or create a RocksDB database.
-    let my_db = match MyDatabase::open() {
-        Ok(db) => {
-            println!("Successfully opened a DB instance");
-            db
-        }
-        Err(err) => {
-            eprintln!("Failed to open database: {:?}", err);
-            return;
-        }
-    };
+    // // Open or create a RocksDB database.
+    // let my_db = match MyDatabase::open() {
+    //     Ok(db) => {
+    //         println!("Successfully opened a DB instance");
+    //         db
+    //     }
+    //     Err(err) => {
+    //         eprintln!("Failed to open database: {:?}", err);
+    //         return;
+    //     }
+    // };
 
-    my_db.write("sync", "Hello World");
+    GLOBAL_DATABASE.write("sync", "Hello World");
 
-    my_db.clear_db();
+    GLOBAL_DATABASE.clear_db();
     println!("Clearance");
 
-    my_db.display_db();
+    GLOBAL_DATABASE.display_db();
     println!("First display after writing");
 
     let three_seconds = time::Duration::from_millis(3000);
@@ -230,8 +241,8 @@ pub fn sync_with_da() {
     let mut sync: u64 = 0;
     let mut block_height: String = "".to_string();
 
-    my_db.write("sync", sync);
-    my_db.write("sync_target", sync_target);
+    GLOBAL_DATABASE.write("sync", sync);
+    GLOBAL_DATABASE.write("sync_target", sync_target);
 
     // Create the runtime
     let rt = match Runtime::new() {
@@ -248,18 +259,18 @@ pub fn sync_with_da() {
     loop {
         println!("SLEEPING FOR 3 SECONDS");
         thread::sleep(three_seconds);
-        sync_target = my_db.read("sync_target");
-        sync = my_db.read("sync");
+        sync_target = GLOBAL_DATABASE.read("sync_target");
+        sync = GLOBAL_DATABASE.read("sync");
 
         println!("sync_target: {:?} and sync {:?}", sync_target, sync);
         if sync_target != sync {
-            my_db.display_db();
+            GLOBAL_DATABASE.display_db();
 
             println!("this is sync_bin inside if: {:?}", sync);
             println!("this is sync_target inside if: {:?}", sync_target);
 
-            let (key, value) = my_db.get_next_entry(sync);
-            txs = my_db.read(key);
+            let next_entry = GLOBAL_DATABASE.get_next_entry(sync);
+            txs = GLOBAL_DATABASE.read(next_entry);
             println!("these are the txs: {:?}", txs.len());
             let s = match str::from_utf8(&txs) {
                 Ok(v) => v,
@@ -270,7 +281,7 @@ pub fn sync_with_da() {
                 println!("this is the block height from DA: {}", block_height);
             });
             if !(block_height.len() == 0) {
-                my_db.write("sync", key);
+                GLOBAL_DATABASE.write("sync", next_entry);
             }
         }
     }
