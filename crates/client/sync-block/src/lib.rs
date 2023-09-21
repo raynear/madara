@@ -61,9 +61,9 @@ impl MyDatabase {
             Some(val) => val,
             None => Vec::new(),
         };
-
+        println!("RIGHT BEFORE DESER ERROR: my_vec: {:?}", my_vec);
         // Deserialize the data into the desired type T.
-        let value: V = deserialize(&my_vec).unwrap();
+        let value: V = deserialize(&my_vec).expect("there is deserialization error");
 
         value
     }
@@ -80,7 +80,11 @@ impl MyDatabase {
         let value_bytes = serialize(&value).unwrap();
         let result_of_put = self.db.put(key_bytes, value_bytes);
         match result_of_put {
-            Ok(()) => println!("Successfully wrote to DB!"),
+            Ok(()) => {
+                println!("Successfully wrote to DB!");
+                self.display_all();
+                println!("Displaying inside Write function");
+            }
             Err(err) => eprintln!("Failed to write to DB: {:?}", err),
         };
     }
@@ -111,7 +115,7 @@ impl MyDatabase {
         }
     }
 
-    fn display_db(&self) {
+    fn display_all(&self) {
         // Create an iterator starting at the first key.
         let iter = self.db.iterator(IteratorMode::Start);
 
@@ -120,7 +124,7 @@ impl MyDatabase {
             match result {
                 Ok((key, value)) => {
                     // println!("display_all_data: key: {:?} value {:?}", key, value);
-                    println!("display_all_data: key: {:?}", key);
+                    println!("display_all_data: key: {:?} value: {:?}", key, value.len());
                 }
                 Err(err) => {
                     eprintln!("There is an error! {:?}", err);
@@ -143,8 +147,8 @@ impl MyDatabase {
         // Iterate to get the next entry.
         // Note: I am bravely unwrapping it because we would not iterate once we reach the last entry, since
         // higher-level condition would not call this function in such case
-        let key = iter.next().unwrap().unwrap();
-        let key_vec = key.1.into_vec();
+        let key = iter.next().unwrap().unwrap().0;
+        let key_vec = key.into_vec();
         return deserialize(&key_vec).unwrap();
     }
 }
@@ -152,7 +156,7 @@ impl MyDatabase {
 // Create a global instance of MyDatabase that can be accessed from other modules.
 // Create a global instance of MyDatabase that can be accessed from other modules.
 lazy_static! {
-    pub static ref GLOBAL_DATABASE: MyDatabase = MyDatabase::open().unwrap_or_else(|err| {
+    pub static ref SYNC_DB: MyDatabase = MyDatabase::open().unwrap_or_else(|err| {
         eprintln!("Failed to open database: {:?}", err);
         std::process::exit(1); // Exit the program on error
     });
@@ -214,24 +218,12 @@ async fn submit_to_da(data: &str) -> String {
 pub fn sync_with_da() {
     println!("**********sync_with_da STARTED!**********");
 
-    // // Open or create a RocksDB database.
-    // let my_db = match MyDatabase::open() {
-    //     Ok(db) => {
-    //         println!("Successfully opened a DB instance");
-    //         db
-    //     }
-    //     Err(err) => {
-    //         eprintln!("Failed to open database: {:?}", err);
-    //         return;
-    //     }
-    // };
+    SYNC_DB.write("sync", "Hello World");
 
-    GLOBAL_DATABASE.write("sync", "Hello World");
-
-    GLOBAL_DATABASE.clear_db();
+    SYNC_DB.clear_db();
     println!("Clearance");
 
-    GLOBAL_DATABASE.display_db();
+    SYNC_DB.display_all();
     println!("First display after writing");
 
     let three_seconds = time::Duration::from_millis(3000);
@@ -241,8 +233,8 @@ pub fn sync_with_da() {
     let mut sync: u64 = 0;
     let mut block_height: String = "".to_string();
 
-    GLOBAL_DATABASE.write("sync", sync);
-    GLOBAL_DATABASE.write("sync_target", sync_target);
+    SYNC_DB.write("sync", sync);
+    SYNC_DB.write("sync_target", sync_target);
 
     // Create the runtime
     let rt = match Runtime::new() {
@@ -259,29 +251,45 @@ pub fn sync_with_da() {
     loop {
         println!("SLEEPING FOR 3 SECONDS");
         thread::sleep(three_seconds);
-        sync_target = GLOBAL_DATABASE.read("sync_target");
-        sync = GLOBAL_DATABASE.read("sync");
+        sync_target = SYNC_DB.read("sync_target");
+        sync = SYNC_DB.read("sync");
 
         println!("sync_target: {:?} and sync {:?}", sync_target, sync);
         if sync_target != sync {
-            GLOBAL_DATABASE.display_db();
+            SYNC_DB.display_all();
 
-            println!("this is sync_bin inside if: {:?}", sync);
+            println!("this is sync inside if: {:?}", sync);
             println!("this is sync_target inside if: {:?}", sync_target);
 
-            let next_entry = GLOBAL_DATABASE.get_next_entry(sync);
-            txs = GLOBAL_DATABASE.read(next_entry);
-            println!("these are the txs: {:?}", txs.len());
-            let s = match str::from_utf8(&txs) {
-                Ok(v) => v,
-                Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+            let next_entry = SYNC_DB.get_next_entry(sync);
+            println!("this is after next_entry: {}", next_entry);
+
+            txs = SYNC_DB.read(next_entry);
+
+            println!("these are the txs: {:?}", txs);
+
+            // Check if the conversion was successful
+            let txs_str = match str::from_utf8(&txs) {
+                Ok(val) => {
+                    println!("Converted to str");
+                    val
+                }
+                Err(err) => {
+                    eprintln!("Conversion to str failed: {:?}", err);
+                    ""
+                }
             };
+
+            println!("these are the txs_str: {:?}", txs_str);
+
+            let encoded_txs = encode_data_to_base64(txs_str);
+
             rt.block_on(async {
-                block_height = submit_to_da(&encode_data_to_base64(s)).await;
+                block_height = submit_to_da(&encoded_txs).await;
                 println!("this is the block height from DA: {}", block_height);
             });
-            if !(block_height.len() == 0) {
-                GLOBAL_DATABASE.write("sync", next_entry);
+            if block_height.len() != 0 {
+                SYNC_DB.write("sync", next_entry);
             }
         }
     }

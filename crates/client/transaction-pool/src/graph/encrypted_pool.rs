@@ -3,10 +3,11 @@
 #![warn(unused_extern_crates)]
 
 use std::collections::HashMap;
+use std::os::macos::raw;
 
 use bincode::{deserialize, serialize};
 use mp_starknet::transaction::types::{EncryptedInvokeTransaction, Transaction};
-use sync_block;
+use sync_block::SYNC_DB;
 
 // use sp_runtime::traits::Block as BlockT;
 
@@ -316,8 +317,9 @@ impl EncryptedPool {
         match self.txs.get_mut(&block_height) {
             Some(txs) => {
                 let raw_txs: Vec<_> = txs.encrypted_pool.values().cloned().collect();
-
-                sync_block::GLOBAL_DATABASE.write(block_height, raw_txs);
+                println!("raw_txs: {:?}", raw_txs);
+                SYNC_DB.write("sync_target", block_height);
+                SYNC_DB.write(block_height, raw_txs);
                 txs.close();
                 Ok(true)
             }
