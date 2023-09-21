@@ -318,8 +318,9 @@ impl EncryptedPool {
             Some(txs) => {
                 let raw_txs: Vec<_> = txs.encrypted_pool.values().cloned().collect();
                 println!("raw_txs: {:?}", raw_txs);
+                let txs_string = serde_json::to_string(&raw_txs).expect("serde_json failed to serialize txs");
                 SYNC_DB.write("sync_target", block_height);
-                SYNC_DB.write(block_height, raw_txs);
+                SYNC_DB.write(block_height, txs_string);
                 txs.close();
                 Ok(true)
             }

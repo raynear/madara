@@ -63,7 +63,31 @@ impl MyDatabase {
         };
         println!("RIGHT BEFORE DESER ERROR: my_vec: {:?}", my_vec);
         // Deserialize the data into the desired type T.
-        let value: V = deserialize(&my_vec).expect("there is deserialization error");
+        let mut retries = 0;
+        let max_retries = 5;
+        let mut value: Option<V> = None;
+
+        while retries < max_retries {
+            match deserialize(&my_vec) {
+                Ok(val) => {
+                    value = Some(val);
+                    break; // Break the loop on successful deserialization
+                }
+                Err(err) => {
+                    retries += 1;
+                    eprintln!(
+                        "Failed to deserialize, the error is: {:?}, number of trials: {} of {}",
+                        err, retries, max_retries
+                    )
+                }
+            }
+        }
+        // If value is still None after retries, you can handle it as needed.
+        let value = value.unwrap_or_else(|| {
+            // Handle the case where deserialization still failed after max retries.
+            // You can return a default value or panic, depending on your use case.
+            panic!("Failed to deserialize after {} retries", max_retries);
+        });
 
         value
     }
