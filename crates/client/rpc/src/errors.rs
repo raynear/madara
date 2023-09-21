@@ -41,10 +41,6 @@ pub enum StarknetRpcApiError {
     FailedToFetchPendingTransactions = 38,
     #[error("Unimplemented method")]
     UnimplementedMethod = 501,
-    #[error("Encrypted Mempool enabled")]
-    EncryptedMempoolEnabled = 600,
-    #[error("Encrypted Mempool disabled")]
-    EncryptedMempoolDisabled = 601,
 }
 
 impl From<StarknetTransactionExecutionError> for StarknetRpcApiError {

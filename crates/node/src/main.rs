@@ -12,11 +12,12 @@ mod rpc;
 mod starknet;
 
 use std::thread;
-use sync_block;
+
+use mc_sync_block;
 
 fn main() -> sc_cli::Result<()> {
     thread::spawn(move || {
-        sync_block::sync_with_da();
+        mc_sync_block::sync_with_da();
     });
     command::run()
 }

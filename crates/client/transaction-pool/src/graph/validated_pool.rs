@@ -147,53 +147,30 @@ impl<B: ChainApi> ValidatedPool<B> {
     pub fn submit(
         &self,
         txs: impl IntoIterator<Item = ValidatedTransactionFor<B>>,
-        order: Option<u64>,
     ) -> Vec<Result<ExtrinsicHash<B>, B::Error>> {
-        match order {
-            Some(order) => {
-                let results =
-                    txs.into_iter().map(|validated_tx| self.submit_one(validated_tx, Some(order))).collect::<Vec<_>>();
+        let results = txs.into_iter().map(|validated_tx| self.submit_one(validated_tx)).collect::<Vec<_>>();
 
-                // only enforce limits if there is at least one imported transaction
-                let removed =
-                    if results.iter().any(|res| res.is_ok()) { self.enforce_limits() } else { Default::default() };
+        // only enforce limits if there is at least one imported transaction
+        let removed = if results.iter().any(|res| res.is_ok()) { self.enforce_limits() } else { Default::default() };
 
-                results
-                    .into_iter()
-                    .map(|res| match res {
-                        Ok(ref hash) if removed.contains(hash) => Err(error::Error::ImmediatelyDropped.into()),
-                        other => other,
-                    })
-                    .collect()
-            }
-            None => {
-                let results =
-                    txs.into_iter().map(|validated_tx| self.submit_one(validated_tx, None)).collect::<Vec<_>>();
-
-                // only enforce limits if there is at least one imported transaction
-                let removed =
-                    if results.iter().any(|res| res.is_ok()) { self.enforce_limits() } else { Default::default() };
-
-                results
-                    .into_iter()
-                    .map(|res| match res {
-                        Ok(ref hash) if removed.contains(hash) => Err(error::Error::ImmediatelyDropped.into()),
-                        other => other,
-                    })
-                    .collect()
-            }
-        }
+        results
+            .into_iter()
+            .map(|res| match res {
+                Ok(ref hash) if removed.contains(hash) => Err(error::Error::ImmediatelyDropped.into()),
+                other => other,
+            })
+            .collect()
     }
 
     /// Submit single pre-validated transaction to the pool.
-    fn submit_one(&self, tx: ValidatedTransactionFor<B>, order: Option<u64>) -> Result<ExtrinsicHash<B>, B::Error> {
+    fn submit_one(&self, tx: ValidatedTransactionFor<B>) -> Result<ExtrinsicHash<B>, B::Error> {
         match tx {
             ValidatedTransaction::Valid(tx) => {
                 if !tx.propagate && !(self.is_validator.0)() {
                     return Err(error::Error::Unactionable.into());
                 }
 
-                let imported = self.pool.write().import(tx, order)?;
+                let imported = self.pool.write().import(tx)?;
 
                 if let base::Imported::Ready { ref hash, .. } = imported {
                     let sinks = &mut self.import_notification_sinks.lock();
@@ -281,7 +258,7 @@ impl<B: ChainApi> ValidatedPool<B> {
             ValidatedTransaction::Valid(tx) => {
                 let hash = self.api.hash_and_length(&tx.data).0;
                 let watcher = self.listener.write().create_watcher(hash);
-                self.submit(std::iter::once(ValidatedTransaction::Valid(tx)), None)
+                self.submit(std::iter::once(ValidatedTransaction::Valid(tx)))
                     .pop()
                     .expect("One extrinsic passed; one result returned; qed")
                     .map(|_| watcher)
@@ -357,7 +334,7 @@ impl<B: ChainApi> ValidatedPool<B> {
                 let mut final_statuses = HashMap::new();
                 for (hash, tx_to_resubmit) in txs_to_resubmit {
                     match tx_to_resubmit {
-                        ValidatedTransaction::Valid(tx) => match pool.import(tx, None) {
+                        ValidatedTransaction::Valid(tx) => match pool.import(tx) {
                             Ok(imported) => match imported {
                                 base::Imported::Ready { promoted, failed, removed, .. } => {
                                     final_statuses.insert(hash, Status::Ready);
@@ -470,7 +447,7 @@ impl<B: ChainApi> ValidatedPool<B> {
         debug_assert_eq!(pruned_hashes.len(), pruned_xts.len());
 
         // Resubmit pruned transactions
-        let results = self.submit(pruned_xts, None);
+        let results = self.submit(pruned_xts);
 
         // Collect the hashes of transactions that now became invalid (meaning that they are
         // successfully pruned).

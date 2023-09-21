@@ -32,18 +32,8 @@ sp-consensus = { workspace = true }
 sp-core = { workspace = true }
 sp-inherents = { workspace = true }
 sp-runtime = { workspace = true }
-parking_lot = { workspace = true }
-mc-transaction-pool = { workspace = true }
-serde_json = { workspace = true }
-pallet-starknet = { workspace = true, default-features = true }
-mc-rpc = { workspace = true }
-mp-starknet = { workspace = true }
-madara-runtime = { workspace = true }
-hyper = "0.14.27"
-tokio = "1.30.0"
-base64 = "0.21.2"
-dotenv = "0.15"
 
 [dev-dependencies]
+parking_lot = { workspace = true }
 sc-transaction-pool = { workspace = true }
 substrate-test-runtime-client = { workspace = true }

@@ -112,8 +112,6 @@ pub struct Options {
     pub reject_future_transactions: bool,
     /// How long the extrinsic is banned for.
     pub ban_time: Duration,
-    /// Encrypted Mempool
-    pub encrypted_mempool: bool,
 }
 
 impl Default for Options {
@@ -123,7 +121,6 @@ impl Default for Options {
             future: base::Limit { count: 512, total_bytes: 1024 * 1024 },
             reject_future_transactions: false,
             ban_time: Duration::from_secs(60 * 30),
-            encrypted_mempool: false,
         }
     }
 }
@@ -138,7 +135,6 @@ impl From<ScOptions> for Options {
             future: base::Limit::from(opts.future),
             reject_future_transactions: opts.reject_future_transactions,
             ban_time: opts.ban_time,
-            encrypted_mempool: false,
         }
     }
 }
@@ -175,14 +171,10 @@ impl<B: ChainApi> Pool<B> {
         at: &BlockId<B::Block>,
         source: TransactionSource,
         xts: impl IntoIterator<Item = ExtrinsicFor<B>>,
-        order: Option<u64>,
     ) -> Result<Vec<Result<ExtrinsicHash<B>, B::Error>>, B::Error> {
         let xts = xts.into_iter().map(|xt| (source, xt));
         let validated_transactions = self.verify(at, xts, CheckBannedBeforeVerify::Yes).await?;
-        match order {
-            Some(order) => Ok(self.validated_pool.submit(validated_transactions.into_values(), Some(order))),
-            None => Ok(self.validated_pool.submit(validated_transactions.into_values(), None)),
-        }
+        Ok(self.validated_pool.submit(validated_transactions.into_values()))
     }
 
     /// Resubmit the given extrinsics to the pool.
@@ -196,7 +188,7 @@ impl<B: ChainApi> Pool<B> {
     ) -> Result<Vec<Result<ExtrinsicHash<B>, B::Error>>, B::Error> {
         let xts = xts.into_iter().map(|xt| (source, xt));
         let validated_transactions = self.verify(at, xts, CheckBannedBeforeVerify::No).await?;
-        Ok(self.validated_pool.submit(validated_transactions.into_values(), None))
+        Ok(self.validated_pool.submit(validated_transactions.into_values()))
     }
 
     /// Imports one unverified extrinsic to the pool
@@ -205,18 +197,9 @@ impl<B: ChainApi> Pool<B> {
         at: &BlockId<B::Block>,
         source: TransactionSource,
         xt: ExtrinsicFor<B>,
-        order: Option<u64>,
     ) -> Result<ExtrinsicHash<B>, B::Error> {
-        match order {
-            Some(order) => {
-                let res = self.submit_at(at, source, std::iter::once(xt), Some(order)).await?.pop();
-                res.expect("One extrinsic passed; one result returned; qed")
-            }
-            None => {
-                let res = self.submit_at(at, source, std::iter::once(xt), None).await?.pop();
-                res.expect("One extrinsic passed; one result returned; qed")
-            }
-        }
+        let res = self.submit_at(at, source, std::iter::once(xt)).await?.pop();
+        res.expect("One extrinsic passed; one result returned; qed")
     }
 
     /// Import a single extrinsic and starts to watch its progress in the pool.

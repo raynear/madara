@@ -1,8 +1,10 @@
 // This file is part of Encrypted mempool.
 
 use encryptor::SequencerPoseidonEncryption;
-use mp_starknet::transaction::types::{EncryptedInvokeTransaction, InvokeTransaction};
+use mp_starknet::transaction::types::InvokeTransaction;
 use vdf::VDF;
+
+use crate::graph::EncryptedInvokeTransaction;
 
 /// Decryptor has delay function for calculate decryption key and
 /// decrypt function for decryption with poseidon algorithm

@@ -5048,6 +5048,7 @@ dependencies = [
  "mc-mapping-sync",
  "mc-rpc",
  "mc-storage",
+ "mc-sync-block",
  "mc-transaction-pool",
  "mp-digest-log",
  "mp-starknet",
@@ -5086,7 +5087,6 @@ dependencies = [
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
- "sync-block",
  "tokio",
  "try-runtime-cli",
 ]
@@ -5297,6 +5297,7 @@ dependencies = [
  "frame-support",
  "hex",
  "jsonrpsee",
+ "mc-transaction-pool",
  "mp-digest-log",
  "mp-starknet",
  "num-bigint",
@@ -5332,6 +5333,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "mc-sync-block"
+version = "0.1.0"
+dependencies = [
+ "base64 0.21.2",
+ "bincode 1.3.3",
+ "dotenv",
+ "hyper",
+ "rocksdb",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "tokio",
+]
+
+[[package]]
 name = "mc-transaction-pool"
 version = "4.0.0-dev"
 dependencies = [
@@ -5342,6 +5358,7 @@ dependencies = [
  "futures-timer",
  "linked-hash-map",
  "log",
+ "mc-sync-block",
  "mp-starknet",
  "num-traits 0.2.16",
  "parity-scale-codec",
@@ -5360,7 +5377,6 @@ dependencies = [
  "sp-transaction-pool",
  "starknet-crypto 0.6.0",
  "substrate-prometheus-endpoint",
- "sync-block",
  "thiserror",
  "tokio",
  "vdf",
@@ -10310,21 +10326,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "sync-block"
-version = "0.1.0"
-dependencies = [
- "base64 0.21.2",
- "bincode 1.3.3",
- "dotenv",
- "hyper",
- "rocksdb",
- "serde",
- "serde_json",
- "serde_with",
- "tokio",
 ]
 
 [[package]]
