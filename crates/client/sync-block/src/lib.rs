@@ -1,9 +1,4 @@
-// let a: Vec<_> = txs.encrypted_pool.values().cloned().collect();
-// println!("self.txs.get_mut: {:?}", a);
-
-use std::collections::HashMap;
 use std::path::Path;
-use std::str::Bytes;
 use std::time::Duration;
 use std::{env, str, thread, time};
 
@@ -13,14 +8,15 @@ use bincode::{deserialize, serialize};
 use dotenv::dotenv;
 use hyper::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use hyper::{Body, Client, Request};
-use lazy_static::lazy::Lazy;
 use lazy_static::lazy_static;
-use rocksdb::{Error, ErrorKind, IteratorMode, DB};
+use rocksdb::{Error, IteratorMode, DB};
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::{json, Value};
 use tokio;
-use tokio::runtime::Runtime; // Import Lazy from the lazy_static crate
+use tokio::runtime::Runtime;
+
+// Import Lazy from the lazy_static crate
 // Import the Error type from rocksdb crate
 // Define a struct to hold the DB instance.
 pub struct MyDatabase {
@@ -32,7 +28,6 @@ impl MyDatabase {
     fn open() -> Result<MyDatabase, Error> {
         let path = Path::new("epool");
         let db = DB::open_default(&path)?;
-        // let db = DB::open_default(&path).expect("Failed to open database");
         Ok(MyDatabase { db })
     }
 
@@ -71,7 +66,8 @@ impl MyDatabase {
             match deserialize(&my_vec) {
                 Ok(val) => {
                     value = Some(val);
-                    break; // Break the loop on successful deserialization
+                    // Break the loop on successful deserialization
+                    break;
                 }
                 Err(err) => {
                     retries += 1;
@@ -105,9 +101,7 @@ impl MyDatabase {
         let result_of_put = self.db.put(key_bytes, value_bytes);
         match result_of_put {
             Ok(()) => {
-                println!("Successfully wrote to DB!");
                 self.display_all();
-                println!("Displaying inside Write function");
             }
             Err(err) => eprintln!("Failed to write to DB: {:?}", err),
         };
@@ -119,21 +113,11 @@ impl MyDatabase {
 
         // Iterate through all key-value pairs and print them.
         for result in iter {
-            match result {
-                Ok((key, value)) => {
-                    // println!("display_all_data: key: {:?} value {:?}", key, value);
-                    let deleted = self.db.delete(key);
-                    match deleted {
-                        Ok(()) => {
-                            println!("Deleted successfully")
-                        }
-                        Err(err) => {
-                            eprintln!("There is an error! {:?}", err);
-                        }
-                    }
-                }
+            let deleted = self.db.delete(result.unwrap().0);
+            match deleted {
+                Ok(()) => {}
                 Err(err) => {
-                    eprintln!("There is an error! {:?}", err);
+                    eprintln!("Failed to delete, error: {:?}", err);
                 }
             }
         }
@@ -148,7 +132,7 @@ impl MyDatabase {
             match result {
                 Ok((key, value)) => {
                     // println!("display_all_data: key: {:?} value {:?}", key, value);
-                    println!("display_all_data: key: {:?} value: {:?}", key, value.len());
+                    println!("display_all_data: key: {:?} value.len(): {:?}", key, value.len());
                 }
                 Err(err) => {
                     eprintln!("There is an error! {:?}", err);
@@ -178,7 +162,6 @@ impl MyDatabase {
 }
 
 // Create a global instance of MyDatabase that can be accessed from other modules.
-// Create a global instance of MyDatabase that can be accessed from other modules.
 lazy_static! {
     pub static ref SYNC_DB: MyDatabase = MyDatabase::open().unwrap_or_else(|err| {
         eprintln!("Failed to open database: {:?}", err);
@@ -186,7 +169,22 @@ lazy_static! {
     });
 }
 
-fn encode_data_to_base64(original: &str) -> String {
+fn convert_vec_to_string(txs: Vec<u8>) -> String {
+    // Check if the conversion was successful
+    let txs_string = match String::from_utf8(txs) {
+        Ok(val) => {
+            println!("Converted to str");
+            val
+        }
+        Err(err) => {
+            eprintln!("Conversion to str failed: {:?}", err);
+            "".to_string()
+        }
+    };
+    txs_string
+}
+
+fn encode_data_to_base64(original: String) -> String {
     // Convert string to bytes
     let bytes = original.as_bytes();
     // Convert bytes to base64
@@ -194,12 +192,16 @@ fn encode_data_to_base64(original: &str) -> String {
     base64_str
 }
 
-async fn submit_to_da(data: &str) -> String {
+async fn submit_to_da(data: Vec<u8>) -> String {
     dotenv().ok();
     let da_host = env::var("DA_HOST").expect("DA_HOST must be set");
     let da_namespace = env::var("DA_NAMESPACE").expect("DA_NAMESPACE must be set");
     let da_auth_token = env::var("DA_AUTH_TOKEN").expect("DA_AUTH_TOKEN must be set");
     let da_auth = format!("Bearer {}", da_auth_token);
+
+    let data_string = convert_vec_to_string(data);
+
+    let encoded_data = encode_data_to_base64(data_string);
 
     let client = Client::new();
     let rpc_request = json!({
@@ -209,7 +211,7 @@ async fn submit_to_da(data: &str) -> String {
             [
                 {
                     "namespace": da_namespace,
-                    "data": data,
+                    "data": encoded_data,
                 }
             ]
         ],
@@ -240,15 +242,43 @@ async fn submit_to_da(data: &str) -> String {
 }
 
 pub fn sync_with_da() {
-    println!("**********sync_with_da STARTED!**********");
-
-    SYNC_DB.write("sync", "Hello World");
+    println!(
+        "
+        @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+        @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&&####&&@@@@@@@#&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+        @@@@@@@@@@@@@@@@@&P?777J5B&@@@@@#G5?!~^^::::::^^~!?5BJ!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+        @@@@@@@@@@@@@@@@B: :7?7~^:^!J5?~::~7J5PGB####BGP5J7~  :75#@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+        @@@@@@@@@@@@@@@@7  G@@@@@B7  .  7B@@@@@@@@@@@@@@@@@Y.55!:.~Y#@@@@@@@@@@@@@@@@@@@@@@@@@
+        @@@@@@@@@@@@@@@@J  J@@@B7..7G&#57~!Y#@@@@@@@@@@@@@Y Y@@@&G7..7B@@@@@@@@@@@@@@@@@@@@@@@
+        @@@@@@@@@@@@@@@@#:  5#7 :Y#@@@@@@&G?!7P&@@@@@@@@@Y ?@@@@@@@&Y: 7B@@@@@@@@@@@@@@@@@@@@@
+        @@@@@@@@@@@@@@@@@G. ...J&@@@@@@@@@@@&GJ!JB@@#PJJ7 ~@@@@@@@@@@&Y..Y@@@@@@@@@@@@@@@@@@@@
+        @@@@@@@@@@@@@@@@@@5   !&@@@@@@@@@@@@@@@&P??7.     .?&@@@@@@@@@@#~ !&@@@@@@@@@@@@@@@@@@
+        @@@@@@@@@@@@@@@@@&! .  ^G@@@@@@@@@@@@@&&@@J         Y@@@@@@@@@@@@7 ~&@@@@@@@@@@@@@@@@@
+        @@@@@@@@@@@@@@@@@7 !G:   ?P5YYJJJJJYYYJJJY?         !YJYYY55PGBB#&7 !@@@@@@@@@@@@@@@@@
+        @@@@@@@@@@@@@&BP?  ^!~~    !GBB###&&&&&@@@@G:     .P&##BBGP5YJ?7!!~  ?PB&@@@@@@@@@@@@@
+        @@@@@@@@@&P?^::^  ?##&@5.   ~G@@@@@@@@@@@@@5. ?GBBJ?G@@@@@@@@@@@&&#J  ~^:~?P&@@@@@@@@@
+        @@@@@@@&J: ~JG&B..B@@@@@#!    !G@@@@@@@@@@Y  !@@@@@#J7G@@@@@@@@@@@@#. B&BY! :J&@@@@@@@
+        @@@@@@@7 .G@@@@P .#@@@@@@@5:    7B@@@@@@@Y  ^&@@@@@@@B?7G@@@@@@@@@@&: P@@@@B: 7@@@@@@@
+        @@@@@@@J  ?G&@@G .#@@@@@@@@&?.   .7B@@@@Y  :#@@@@@@@@@@G7?#@@@@@@@@&: G@@&B?  J@@@@@@@
+        @@@@@@@@P~  :!JY. G@@@@@@@@@@#7.   .7B@Y  .G@@@@@@@@@@@@@P!J&@@@@@@G  YY!:  ~P@@@@@@@@
+        @@@@@@@@@@BY!:    .^~7?JY5PGGBB5~    .~   Y@&&&&&&&####BBBP^^YYJ7!~:    :!YB@@@@@@@@@@
+        @@@@@@@@@@@@@&BPJ. ..          ..         :::::::::....          .. .JPB&@@@@@@@@@@@@@
+        @@@@@@@@@@@@@@@@@Y :GBP5J?!~^:...                    ..:^^~7?J7 ?G: J@@@@@@@@@@@@@@@@@
+        @@@@@@@@@@@@@@@@@@J :B@@@@@@@&&##BB7   .     :?PGGGBB##&&@@@@@@Y.: J@@@@@@@@@@@@@@@@@@
+        @@@@@@@@@@@@@@@@@@@5. Y@@@@@@@@@@@5   :BG7:   .!5&@@@@@@@@@@@@@5  :#@@@@@@@@@@@@@@@@@@
+        @@@@@@@@@@@@@@@@@@@@B~ ~G@@@@@@@@5   .G@@@#5!.   :7G&@@@@@@@@G~ !Y ^#@@@@@@@@@@@@@@@@@
+        @@@@@@@@@@@@@@@@@@@@@@P^ ~5&@@@@Y    5@@@@@@@#Y~.   ^JG&@@&P~ ^5@@J ~&@@@@@@@@@@@@@@@@
+        @@@@@@@@@@@@@@@@@@@@@@@&P!.:7P&5    J@@@@@@@@@@@#5!:   ^??:.!G@@@@&: 5@@@@@@@@@@@@@@@@
+        @@@@@@@@@@@@@@@@@@@@@@@@@@#Y~::    !@@@@@@@@@@@@@@&B?.     :JPB#&&G. Y@@@@@@@@@@@@@@@@
+        @@@@@@@@@@@@@@@@@@@@@@@@@@@@@J     :~!7JJYYYYJJ7!^::^!JGGY7^.  .:: .?&@@@@@@@@@@@@@@@@
+        @@@@@@@@@@@@@@@@@@@@@@@@@@@@P    :BG5Y?77!~~!77?Y5G#&@@@@@@&#BGP55G#@@@@@@@@@@@@@@@@@@
+        @@@@@@@@@@@@@@@@@@@@@@@@@@@@G^..^B@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+        @@@@@@@@@@@@@@@@@@@@@@@@@@@@@&##&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+        @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+    "
+    );
 
     SYNC_DB.clear_db();
-    println!("Clearance");
-
-    SYNC_DB.display_all();
-    println!("First display after writing");
 
     let three_seconds = time::Duration::from_millis(3000);
 
@@ -273,7 +303,6 @@ pub fn sync_with_da() {
     };
 
     loop {
-        println!("SLEEPING FOR 3 SECONDS");
         thread::sleep(three_seconds);
         sync_target = SYNC_DB.read("sync_target");
         sync = SYNC_DB.read("sync");
@@ -281,36 +310,11 @@ pub fn sync_with_da() {
         println!("sync_target: {:?} and sync {:?}", sync_target, sync);
         if sync_target != sync {
             SYNC_DB.display_all();
-
-            println!("this is sync inside if: {:?}", sync);
-            println!("this is sync_target inside if: {:?}", sync_target);
-
             let next_entry = SYNC_DB.get_next_entry(sync);
-            println!("this is after next_entry: {}", next_entry);
-
             txs = SYNC_DB.read(next_entry);
-
-            println!("these are the txs: {:?}", txs);
-
-            // Check if the conversion was successful
-            let txs_str = match str::from_utf8(&txs) {
-                Ok(val) => {
-                    println!("Converted to str");
-                    val
-                }
-                Err(err) => {
-                    eprintln!("Conversion to str failed: {:?}", err);
-                    ""
-                }
-            };
-
-            println!("these are the txs_str: {:?}", txs_str);
-
-            let encoded_txs = encode_data_to_base64(txs_str);
-
             rt.block_on(async {
-                block_height = submit_to_da(&encoded_txs).await;
-                println!("this is the block height from DA: {}", block_height);
+                block_height = submit_to_da(txs).await;
+                println!("DA BLOCK HEIGHT-------------->: {}", block_height);
             });
             if block_height.len() != 0 {
                 SYNC_DB.write("sync", next_entry);
