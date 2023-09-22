@@ -1,17 +1,14 @@
 use std::path::Path;
 use std::time::Duration;
-use std::{env, str, thread, time};
+use std::{env, thread, time};
 
 use base64::engine::general_purpose;
 use base64::Engine as _;
-use bincode::{deserialize, serialize};
 use dotenv::dotenv;
 use hyper::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use hyper::{Body, Client, Request};
 use lazy_static::lazy_static;
 use rocksdb::{Error, IteratorMode, DB};
-use serde::de::DeserializeOwned;
-use serde::Serialize;
 use serde_json::{json, Value};
 use tokio;
 use tokio::runtime::Runtime;
@@ -32,13 +29,9 @@ impl MyDatabase {
     }
 
     // Method to perform a read operation.
-    fn read<K, V>(&self, key: K) -> V
-    where
-        K: Serialize,
-        V: DeserializeOwned, // Ensure T can be deserialized.
-    {
+    fn read(&self, key: String) -> String {
         // Serialize key to bytes
-        let key_bytes = serialize(&key).unwrap();
+        let key_bytes = key.as_bytes();
 
         // Use the 'get' method to retrieve the value.
         let result_of_get = self.db.get(key_bytes);
@@ -52,62 +45,30 @@ impl MyDatabase {
         };
 
         // Handle the None case.
-        let my_vec = match option {
+        let value_vec = match option {
             Some(val) => val,
             None => Vec::new(),
         };
-        println!("RIGHT BEFORE DESER ERROR: my_vec: {:?}", my_vec);
-        // Deserialize the data into the desired type T.
-        let mut retries = 0;
-        let max_retries = 5;
-        let mut value: Option<V> = None;
-
-        while retries < max_retries {
-            match deserialize(&my_vec) {
-                Ok(val) => {
-                    value = Some(val);
-                    // Break the loop on successful deserialization
-                    break;
-                }
-                Err(err) => {
-                    retries += 1;
-                    eprintln!(
-                        "Failed to deserialize, the error is: {:?}, number of trials: {} of {}",
-                        err, retries, max_retries
-                    )
-                }
-            }
-        }
-        // If value is still None after retries, you can handle it as needed.
-        let value = value.unwrap_or_else(|| {
-            // Handle the case where deserialization still failed after max retries.
-            // You can return a default value or panic, depending on your use case.
-            panic!("Failed to deserialize after {} retries", max_retries);
-        });
+        let value = String::from_utf8(value_vec).unwrap();
 
         value
     }
 
     // Method to perform a write operation.
-    pub fn write<K, V>(&self, key: K, value: V)
-    where
-        K: Serialize,
-        V: Serialize,
-    {
+    pub fn write(&self, key: String, value: String) {
         // Serialize key to bytes
-        let key_bytes = serialize(&key).unwrap();
+        let key_bytes = key.as_bytes();
+
         // Serialize value for storing in DB
-        let value_bytes = serialize(&value).unwrap();
+        let value_bytes = value.as_bytes();
         let result_of_put = self.db.put(key_bytes, value_bytes);
         match result_of_put {
-            Ok(()) => {
-                self.display_all();
-            }
+            Ok(()) => {}
             Err(err) => eprintln!("Failed to write to DB: {:?}", err),
         };
     }
 
-    fn clear_db(&self) {
+    fn clear(&self) {
         // Create an iterator starting at the first key.
         let iter = self.db.iterator(IteratorMode::Start);
 
@@ -141,47 +102,38 @@ impl MyDatabase {
         }
     }
 
-    fn get_next_entry<K>(&self, start_key: K) -> K
-    where
-        K: Serialize + DeserializeOwned,
-    {
+    fn get_next_entry(&self, start_key: String) -> (String, String) {
         // Serialize key to bytes. The process is 2-step since u64 does not directly support as_ref()
-        let serialized = serialize(&start_key).unwrap();
-        let key_bytes = serialized.as_ref();
+        let key_bytes = start_key.as_bytes();
 
         // Create an iterator starting from the key after the specified start_key.
         let mut iter = self.db.iterator(IteratorMode::From(key_bytes, rocksdb::Direction::Forward));
 
         // Iterate to get the next entry.
-        // Note: I am bravely unwrapping it because we would not iterate once we reach the last entry, since
-        // higher-level condition would not call this function in such case
-        let key = iter.next().unwrap().unwrap().0;
-        let key_vec = key.into_vec();
-        return deserialize(&key_vec).unwrap();
+        let key_vec = iter.next().unwrap().unwrap().0.into_vec();
+        let value_vec = iter.next().unwrap().unwrap().1.into_vec();
+        let key = String::from_utf8(key_vec).unwrap();
+        let value = String::from_utf8(value_vec).unwrap();
+        return (key, value);
     }
 }
 
 // Create a global instance of MyDatabase that can be accessed from other modules.
 lazy_static! {
-    pub static ref SYNC_DB: MyDatabase = MyDatabase::open().unwrap_or_else(|err| {
-        eprintln!("Failed to open database: {:?}", err);
-        std::process::exit(1); // Exit the program on error
-    });
-}
+    pub static ref SYNC_DB: MyDatabase = {
+        let db = MyDatabase::open().unwrap_or_else(|err| {
+            eprintln!("Failed to open database: {:?}", err);
+            std::process::exit(1); // Exit the program on error
+        });
 
-fn convert_vec_to_string(txs: Vec<u8>) -> String {
-    // Check if the conversion was successful
-    let txs_string = match String::from_utf8(txs) {
-        Ok(val) => {
-            println!("Converted to str");
-            val
-        }
-        Err(err) => {
-            eprintln!("Conversion to str failed: {:?}", err);
-            "".to_string()
-        }
+        db.clear();
+
+        // Perform write operations here
+        db.write("sync".to_string(), "0".to_string());
+        db.write("sync_target".to_string(), "0".to_string());
+
+        db // Return the initialized MyDatabase
     };
-    txs_string
 }
 
 fn encode_data_to_base64(original: String) -> String {
@@ -192,16 +144,14 @@ fn encode_data_to_base64(original: String) -> String {
     base64_str
 }
 
-async fn submit_to_da(data: Vec<u8>) -> String {
+async fn submit_to_da(data: String) -> String {
     dotenv().ok();
     let da_host = env::var("DA_HOST").expect("DA_HOST must be set");
     let da_namespace = env::var("DA_NAMESPACE").expect("DA_NAMESPACE must be set");
     let da_auth_token = env::var("DA_AUTH_TOKEN").expect("DA_AUTH_TOKEN must be set");
     let da_auth = format!("Bearer {}", da_auth_token);
 
-    let data_string = convert_vec_to_string(data);
-
-    let encoded_data = encode_data_to_base64(data_string);
+    let encoded_data = encode_data_to_base64(data);
 
     let client = Client::new();
     let rpc_request = json!({
@@ -278,18 +228,6 @@ pub fn sync_with_da() {
     "
     );
 
-    SYNC_DB.clear_db();
-
-    let three_seconds = time::Duration::from_millis(3000);
-
-    let mut txs: Vec<u8>;
-    let mut sync_target: u64 = 0;
-    let mut sync: u64 = 0;
-    let mut block_height: String = "".to_string();
-
-    SYNC_DB.write("sync", sync);
-    SYNC_DB.write("sync_target", sync_target);
-
     // Create the runtime
     let rt = match Runtime::new() {
         Ok(rt) => {
@@ -303,22 +241,21 @@ pub fn sync_with_da() {
     };
 
     loop {
-        thread::sleep(three_seconds);
-        sync_target = SYNC_DB.read("sync_target");
-        sync = SYNC_DB.read("sync");
+        thread::sleep(time::Duration::from_millis(3000));
+        let sync = SYNC_DB.read("sync".to_string());
+        let sync_target = SYNC_DB.read("sync_target".to_string());
 
         println!("sync_target: {:?} and sync {:?}", sync_target, sync);
         if sync_target != sync {
             SYNC_DB.display_all();
-            let next_entry = SYNC_DB.get_next_entry(sync);
-            txs = SYNC_DB.read(next_entry);
+            let (next_sync, next_txs) = SYNC_DB.get_next_entry(sync);
             rt.block_on(async {
-                block_height = submit_to_da(txs).await;
-                println!("DA BLOCK HEIGHT-------------->: {}", block_height);
+                let block_height = submit_to_da(next_txs).await.map_err(|_| "Could not submit to DA");
+                println!("DA BLOCK HEIGHT-------------------------------------------------------->: {}", block_height);
+                if block_height.len() != 0 {
+                    SYNC_DB.write("sync".to_string(), next_sync);
+                }
             });
-            if block_height.len() != 0 {
-                SYNC_DB.write("sync", next_entry);
-            }
         }
     }
 }
