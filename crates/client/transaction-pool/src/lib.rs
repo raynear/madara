@@ -22,6 +22,8 @@
 #![warn(unused_extern_crates)]
 
 mod api;
+/// decryptor module
+pub mod decryptor;
 mod enactment_state;
 pub mod error;
 mod graph;
@@ -39,8 +41,10 @@ use futures::channel::oneshot;
 use futures::future::{self, ready};
 use futures::prelude::*;
 pub use graph::base_pool::Limit as PoolLimit;
-pub use graph::{ChainApi, Options, Pool, Transaction, ValidatedTransaction};
-use graph::{ExtrinsicHash, IsValidator};
+pub use graph::{
+    ChainApi, EncryptedPool, ExtrinsicHash, IsValidator, Options, Pool, Transaction, ValidatedTransaction,
+};
+use mp_starknet::transaction::types::EncryptedInvokeTransaction;
 use parking_lot::Mutex;
 use prometheus_endpoint::Registry as PrometheusRegistry;
 use sc_transaction_pool_api::error::Error as TxPoolError;
@@ -52,6 +56,7 @@ use sp_blockchain::{HashAndNumber, TreeRoute};
 use sp_core::traits::SpawnEssentialNamed;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{AtLeast32Bit, Block as BlockT, Extrinsic, Header as HeaderT, NumberFor, Zero};
+use tokio::sync::Mutex as TokioMutex;
 
 pub use crate::api::FullChainApi;
 use crate::metrics::MetricsLink as PrometheusMetrics;
@@ -75,6 +80,7 @@ where
     PoolApi: graph::ChainApi<Block = Block>,
 {
     pool: Arc<graph::Pool<PoolApi>>,
+    epool: Arc<TokioMutex<EncryptedPool>>,
     api: Arc<PoolApi>,
     revalidation_strategy: Arc<Mutex<RevalidationStrategy<NumberFor<Block>>>>,
     revalidation_queue: Arc<revalidation::RevalidationQueue<PoolApi>>,
@@ -152,14 +158,17 @@ where
         pool_api: Arc<PoolApi>,
         best_block_hash: Block::Hash,
         finalized_hash: Block::Hash,
+        encrypted_mempool: bool,
     ) -> (Self, Pin<Box<dyn Future<Output = ()> + Send>>) {
         let pool = Arc::new(graph::Pool::new(Default::default(), true.into(), pool_api.clone()));
+        let epool = Arc::new(TokioMutex::new(EncryptedPool::new(encrypted_mempool)));
         let (revalidation_queue, background_task) =
             revalidation::RevalidationQueue::new_background(pool_api.clone(), pool.clone());
         (
             Self {
                 api: pool_api,
                 pool,
+                epool,
                 revalidation_queue: Arc::new(revalidation_queue),
                 revalidation_strategy: Arc::new(Mutex::new(RevalidationStrategy::Always)),
                 ready_poll: Default::default(),
@@ -183,8 +192,11 @@ where
         best_block_number: NumberFor<Block>,
         best_block_hash: Block::Hash,
         finalized_hash: Block::Hash,
+        encrypted_mempool: bool,
     ) -> Self {
         let pool = Arc::new(graph::Pool::new(options, is_validator, pool_api.clone()));
+        let epool = Arc::new(TokioMutex::new(EncryptedPool::new(encrypted_mempool)));
+
         let (revalidation_queue, background_task) = match revalidation_type {
             RevalidationType::Light => (revalidation::RevalidationQueue::new(pool_api.clone(), pool.clone()), None),
             RevalidationType::Full => {
@@ -201,6 +213,7 @@ where
         Self {
             api: pool_api,
             pool,
+            epool,
             revalidation_queue: Arc::new(revalidation_queue),
             revalidation_strategy: Arc::new(Mutex::new(match revalidation_type {
                 RevalidationType::Light => RevalidationStrategy::Light(RevalidationStatus::NotScheduled),
@@ -217,9 +230,86 @@ where
         &self.pool
     }
 
+    /// Gets shared reference to the underlying pool.
+    pub fn epool(&self) -> &Arc<TokioMutex<EncryptedPool>> {
+        &self.epool
+    }
+
     /// Get access to the underlying api
     pub fn api(&self) -> &PoolApi {
         &self.api
+    }
+}
+
+/// trait for get epool
+pub trait EPool {
+    /// get epool
+    fn epool(&self) -> Arc<TokioMutex<EncryptedPool>>;
+}
+
+impl<PoolApi, Block> EPool for BasicPool<PoolApi, Block>
+where
+    Block: BlockT,
+    PoolApi: graph::ChainApi<Block = Block> + 'static,
+{
+    fn epool(&self) -> Arc<TokioMutex<EncryptedPool>> {
+        self.epool().clone()
+    }
+}
+
+/// EncryptedTransactionPool inherit TransactionPool and add order for functions
+pub trait EncryptedTransactionPool: TransactionPool {
+    /// submit_one of TransactionPool trait and add order
+    fn submit_one_with_order(
+        &self,
+        at: &BlockId<Self::Block>,
+        source: TransactionSource,
+        xt: TransactionFor<Self>,
+        order: u64,
+    ) -> PoolFuture<TxHash<Self>, Self::Error>;
+
+    /// submit_at of TransactionPool trait and add order
+    fn submit_at_with_order(
+        &self,
+        at: &BlockId<Self::Block>,
+        source: TransactionSource,
+        xts: Vec<TransactionFor<Self>>,
+        order: Option<u64>,
+    ) -> PoolFuture<Vec<Result<TxHash<Self>, Self::Error>>, Self::Error>;
+}
+impl<PoolApi, Block> EncryptedTransactionPool for BasicPool<PoolApi, Block>
+where
+    Block: BlockT,
+    PoolApi: 'static + graph::ChainApi<Block = Block>,
+{
+    fn submit_one_with_order(
+        &self,
+        at: &BlockId<Self::Block>,
+        source: TransactionSource,
+        xt: TransactionFor<Self>,
+        order: u64,
+    ) -> PoolFuture<TxHash<Self>, Self::Error> {
+        let pool = self.pool.clone();
+        let at = *at;
+
+        self.metrics.report(|metrics| metrics.submitted_transactions.inc());
+
+        async move { pool.submit_one(&at, source, xt, Some(order)).await }.boxed()
+    }
+
+    fn submit_at_with_order(
+        &self,
+        at: &BlockId<Self::Block>,
+        source: TransactionSource,
+        xts: Vec<TransactionFor<Self>>,
+        order: Option<u64>,
+    ) -> PoolFuture<Vec<Result<TxHash<Self>, Self::Error>>, Self::Error> {
+        let pool = self.pool.clone();
+        let at = *at;
+
+        self.metrics.report(|metrics| metrics.submitted_transactions.inc_by(xts.len() as u64));
+
+        async move { pool.submit_at(&at, source, xts, order).await }.boxed()
     }
 }
 
@@ -244,7 +334,7 @@ where
 
         self.metrics.report(|metrics| metrics.submitted_transactions.inc_by(xts.len() as u64));
 
-        async move { pool.submit_at(&at, source, xts).await }.boxed()
+        async move { pool.submit_at(&at, source, xts, None).await }.boxed()
     }
 
     fn submit_one(
@@ -258,7 +348,7 @@ where
 
         self.metrics.report(|metrics| metrics.submitted_transactions.inc());
 
-        async move { pool.submit_one(&at, source, xt).await }.boxed()
+        async move { pool.submit_one(&at, source, xt, None).await }.boxed()
     }
 
     fn submit_and_watch(
@@ -361,6 +451,7 @@ where
         prometheus: Option<&PrometheusRegistry>,
         spawner: impl SpawnEssentialNamed,
         client: Arc<Client>,
+        encrypted_mempool: bool,
     ) -> Arc<Self> {
         let pool_api = Arc::new(FullChainApi::new(client.clone(), prometheus, &spawner));
         let pool = Arc::new(Self::with_revalidation_type(
@@ -373,6 +464,7 @@ where
             client.usage_info().chain.best_number,
             client.usage_info().chain.best_hash,
             client.usage_info().chain.finalized_hash,
+            encrypted_mempool,
         ));
 
         // make transaction pool available for off-chain runtime calls.
@@ -426,7 +518,7 @@ where
             validity,
         );
 
-        self.pool.validated_pool().submit(vec![validated]).remove(0)
+        self.pool.validated_pool().submit(vec![validated], None).remove(0)
     }
 }
 

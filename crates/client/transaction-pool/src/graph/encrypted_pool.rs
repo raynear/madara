@@ -6,9 +6,7 @@ use std::collections::HashMap;
 
 use bincode::{deserialize, serialize};
 use mc_sync_block::SYNC_DB;
-use mp_starknet::transaction::types::Transaction;
-
-use crate::graph::EncryptedInvokeTransaction;
+use mp_starknet::transaction::types::{EncryptedInvokeTransaction, Transaction};
 
 // use sp_runtime::traits::Block as BlockT;
 

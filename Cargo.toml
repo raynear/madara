@@ -5,14 +5,14 @@ members = [
   "crates/pallets/starknet",
   "crates/primitives/starknet",
   "crates/primitives/digest-log",
-  "crates/client/encrypted-mempool/block-proposer",
+  "crates/client/block-proposer",
   "crates/client/db",
-  "crates/client/encrypted-mempool/rpc-core",
-  "crates/client/encrypted-mempool/rpc",
+  "crates/client/rpc-core",
+  "crates/client/rpc",
   "crates/client/mapping-sync",
   "crates/client/storage",
-  "crates/client/encrypted-mempool/transaction-pool",
-  "crates/client/encrypted-mempool/sync-block",
+  "crates/client/transaction-pool",
+  "crates/client/sync-block",
 ]
 
 [profile.release]
@@ -117,11 +117,11 @@ mp-digest-log = { path = "crates/primitives/digest-log", default-features = fals
 mc-mapping-sync = { path = "crates/client/mapping-sync" }
 mc-db = { path = "crates/client/db" }
 mc-storage = { path = "crates/client/storage" }
-mc-rpc = { path = "crates/client/encrypted-mempool/rpc" }
-mc-rpc-core = { path = "crates/client/encrypted-mempool/rpc-core" }
-mc-block-proposer = { path = "crates/client/encrypted-mempool/block-proposer" }
-mc-transaction-pool = { path = "crates/client/encrypted-mempool/transaction-pool" }
-mc-sync-block = { path = "crates/client/encrypted-mempool/sync-block" }
+mc-rpc = { path = "crates/client/rpc" }
+mc-rpc-core = { path = "crates/client/rpc-core" }
+mc-block-proposer = { path = "crates/client/block-proposer" }
+mc-transaction-pool = { path = "crates/client/transaction-pool" }
+mc-sync-block = { path = "crates/client/sync-block" }
 
 # Madara runtime
 madara-runtime = { path = "crates/runtime" }

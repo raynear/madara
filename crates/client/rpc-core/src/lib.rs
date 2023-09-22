@@ -9,6 +9,7 @@ mod tests;
 
 use jsonrpsee::core::RpcResult;
 use jsonrpsee::proc_macros::rpc;
+use mp_starknet::transaction::types::{EncryptedInvokeTransaction, InvokeTransaction};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
@@ -25,8 +26,9 @@ use starknet_core::types::{
     InvokeTransactionResult, MaybePendingBlockWithTxHashes, MaybePendingBlockWithTxs, MaybePendingTransactionReceipt,
     StateUpdate, SyncStatusType, Transaction,
 };
+use types::{EncryptedInvokeTransactionResult, EncryptedMempoolTransactionResult};
 
-use crate::types::{RpcGetProofInput, RpcGetProofOutput};
+use crate::types::{DecryptionInfo, ProvideDecryptionKeyResult, RpcGetProofInput, RpcGetProofOutput};
 
 #[serde_as]
 #[derive(Serialize, Deserialize)]
@@ -145,4 +147,32 @@ pub trait StarknetRpcApi {
     /// contract.
     #[method(name = "getProof")]
     fn get_proof(&self, get_proof_input: RpcGetProofInput) -> RpcResult<RpcGetProofOutput>;
+
+    // (For testing) Encrypt Invoke Transaction
+    #[method(name = "encryptInvokeTransaction")]
+    fn encrypt_invoke_transaction(
+        &self,
+        invoke_transaction: BroadcastedInvokeTransaction,
+        t: u64,
+    ) -> RpcResult<EncryptedInvokeTransactionResult>;
+
+    // (For testing) Decrypt Encrypted Invoke Transaction
+    #[method(name = "decryptEncryptedInvokeTransaction")]
+    async fn decrypt_encrypted_invoke_transaction(
+        &self,
+        encrypted_invoke_transaction: EncryptedInvokeTransaction,
+        decryption_key: Option<String>,
+    ) -> RpcResult<InvokeTransaction>;
+
+    /// Add an Encrypted Invoke Transaction to invoke a contract function
+    #[method(name = "addEncryptedInvokeTransaction")]
+    async fn add_encrypted_invoke_transaction(
+        &self,
+        encrypted_invoke_transaction: EncryptedInvokeTransaction,
+    ) -> RpcResult<EncryptedMempoolTransactionResult>;
+
+    /// Allow a client to pass the decryption key, after the client received the order_commitment
+    /// from sequencer.
+    #[method(name = "provideDecryptionKey")]
+    async fn provide_decryption_key(&self, decryption_info: DecryptionInfo) -> RpcResult<ProvideDecryptionKeyResult>;
 }

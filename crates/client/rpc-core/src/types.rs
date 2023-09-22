@@ -1,6 +1,10 @@
 use mp_starknet::crypto::merkle_patricia_tree::merkle_tree::ProofNode;
+use mp_starknet::execution::types::Felt252Wrapper;
+use mp_starknet::transaction::types::{EncryptedInvokeTransaction, MaxArraySize};
 use serde::{Deserialize, Serialize};
-use serde_with::skip_serializing_none;
+use serde_with::{serde_as, skip_serializing_none};
+use sp_runtime::BoundedVec;
+use starknet_core::serde::unsigned_field_element::UfeHex;
 use starknet_core::types::{BlockId, FieldElement};
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
@@ -55,4 +59,37 @@ pub struct ContractData {
 
     /// The proofs associated with the queried storage values
     pub storage_proofs: Vec<Vec<ProofNode>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct EncryptedMempoolTransactionResult {
+    pub block_number: u64,
+    pub order: u64,
+    pub signature: BoundedVec<Felt252Wrapper, MaxArraySize>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DecryptionInfo {
+    pub block_number: u64,
+    pub order: u64,
+
+    pub signature: BoundedVec<Felt252Wrapper, MaxArraySize>,
+
+    pub decryption_key: String,
+}
+
+#[serde_as]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProvideDecryptionKeyResult {
+    /// The hash of the invoke transaction
+    #[serde_as(as = "UfeHex")]
+    pub transaction_hash: FieldElement,
+}
+
+#[serde_as]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EncryptedInvokeTransactionResult {
+    pub decryption_key: String,
+
+    pub encrypted_invoke_transaction: EncryptedInvokeTransaction,
 }
