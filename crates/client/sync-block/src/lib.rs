@@ -10,8 +10,8 @@ use hyper::{Body, Client, Request};
 use lazy_static::lazy_static;
 use rocksdb::{Error, IteratorMode, DB};
 use serde_json::{json, Value};
-use tokio;
 use tokio::runtime::Runtime;
+use {reqwest, tokio};
 
 // Import Lazy from the lazy_static crate
 // Import the Error type from rocksdb crate
@@ -144,16 +144,16 @@ fn encode_data_to_base64(original: String) -> String {
     base64_str
 }
 
-async fn submit_to_da(data: String) -> String {
+async fn submit_to_da(data: String) -> Result<String, Box<dyn std::error::Error>> {
     dotenv().ok();
-    let da_host = env::var("DA_HOST").expect("DA_HOST must be set");
-    let da_namespace = env::var("DA_NAMESPACE").expect("DA_NAMESPACE must be set");
-    let da_auth_token = env::var("DA_AUTH_TOKEN").expect("DA_AUTH_TOKEN must be set");
+    let da_host = env::var("DA_HOST")?;
+    let da_namespace = env::var("DA_NAMESPACE")?;
+    let da_auth_token = env::var("DA_AUTH_TOKEN")?;
     let da_auth = format!("Bearer {}", da_auth_token);
 
     let encoded_data = encode_data_to_base64(data);
 
-    let client = Client::new();
+    let client = reqwest::Client::new();
     let rpc_request = json!({
         "jsonrpc": "2.0",
         "method": "blob.Submit",
@@ -168,27 +168,24 @@ async fn submit_to_da(data: String) -> String {
         "id": 1,
     });
 
-    let uri = std::env::var("da_uri").unwrap_or(da_host.into());
+    let uri = std::env::var("DA_URI").unwrap_or_else(|_| da_host);
 
-    let req = Request::post(uri.as_str())
-        .header(AUTHORIZATION, HeaderValue::from_str(da_auth.as_str()).unwrap())
-        .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
-        .body(Body::from(rpc_request.to_string()))
-        .unwrap();
-    let response_future = client.request(req);
+    let resp = client
+        .post(&uri)
+        .header(reqwest::header::AUTHORIZATION, da_auth)
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(rpc_request.to_string())
+        .timeout(Duration::from_secs(100))
+        .send()
+        .await?;
 
-    let resp = tokio::time::timeout(Duration::from_secs(100), response_future)
-        .await
-        .map_err(|_| "Request timed out")
-        .unwrap()
-        .unwrap();
-
-    let response_body = hyper::body::to_bytes(resp.into_body()).await.unwrap();
-    let parsed: Value = serde_json::from_slice(&response_body).unwrap();
-
-    // println!("stompesi - {:?}", parsed);
-
-    if let Some(result_value) = parsed.get("result") { result_value.to_string() } else { "".to_string() }
+    let response_body = resp.bytes().await?;
+    let parsed: Value = serde_json::from_slice(&response_body)?;
+    if let Some(result_value) = parsed.get("result") {
+        Ok(result_value.to_string())
+    } else {
+        Err("Result not found in response".into()) // Or create a custom error type
+    }
 }
 
 pub fn sync_with_da() {
@@ -250,10 +247,17 @@ pub fn sync_with_da() {
             SYNC_DB.display_all();
             let (next_sync, next_txs) = SYNC_DB.get_next_entry(sync);
             rt.block_on(async {
-                let block_height = submit_to_da(next_txs).await.map_err(|_| "Could not submit to DA");
-                println!("DA BLOCK HEIGHT-------------------------------------------------------->: {}", block_height);
-                if block_height.len() != 0 {
-                    SYNC_DB.write("sync".to_string(), next_sync);
+                let block_height = submit_to_da(next_txs).await;
+                match block_height {
+                    Ok(block_height) => {
+                        println!(
+                            "<------------------------------------DA BLOCK \
+                             HEIGHT------------------------------------------>: {}",
+                            block_height
+                        );
+                        SYNC_DB.write("sync".to_string(), next_sync);
+                    }
+                    Err(err) => eprintln!("Failed to submit to DA with error: {:?}", err),
                 }
             });
         }
