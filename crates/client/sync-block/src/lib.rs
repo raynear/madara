@@ -1,17 +1,16 @@
 use std::path::Path;
-use std::time::Duration;
 use std::{env, thread, time};
 
 use base64::engine::general_purpose;
 use base64::Engine as _;
 use dotenv::dotenv;
-use hyper::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
-use hyper::{Body, Client, Request};
+use hyper::header::HeaderValue;
+use hyper::{body, Body, Client, Request, StatusCode};
 use lazy_static::lazy_static;
 use rocksdb::{Error, IteratorMode, DB};
 use serde_json::{json, Value};
+use tokio;
 use tokio::runtime::Runtime;
-use {reqwest, tokio};
 
 // Import Lazy from the lazy_static crate
 // Import the Error type from rocksdb crate
@@ -153,8 +152,10 @@ async fn submit_to_da(data: String) -> Result<String, Box<dyn std::error::Error>
 
     let encoded_data = encode_data_to_base64(data);
 
-    let client = reqwest::Client::new();
+    let client = Client::new();
+
     let rpc_request = json!({
+        "id": 1,
         "jsonrpc": "2.0",
         "method": "blob.Submit",
         "params": [
@@ -165,22 +166,27 @@ async fn submit_to_da(data: String) -> Result<String, Box<dyn std::error::Error>
                 }
             ]
         ],
-        "id": 1,
     });
 
-    let uri = std::env::var("DA_URI").unwrap_or_else(|_| da_host);
+    // Create a mutable request builder
+    let request_builder = Request::builder()
+        .method("POST")
+        .uri(&da_host)
+        .header("Authorization", da_auth.clone()) // Clone da_auth here
+        .header("Content-Type", "application/json")
+        .header("timeout", HeaderValue::from_static("100"))
+        .body(Body::from(rpc_request.to_string()))?;
 
-    let resp = client
-        .post(&uri)
-        .header(reqwest::header::AUTHORIZATION, da_auth)
-        .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .body(rpc_request.to_string())
-        .timeout(Duration::from_secs(100))
-        .send()
-        .await?;
+    // Send the request and await the response
+    let response = client.request(request_builder).await?;
 
-    let response_body = resp.bytes().await?;
+    if response.status() != StatusCode::OK {
+        return Err(format!("Request failed with status code: {}", response.status()).into());
+    }
+
+    let response_body = body::to_bytes(response.into_body()).await?;
     let parsed: Value = serde_json::from_slice(&response_body)?;
+
     if let Some(result_value) = parsed.get("result") {
         Ok(result_value.to_string())
     } else {
