@@ -12,7 +12,7 @@ use futures::channel::mpsc;
 use jsonrpsee::RpcModule;
 use madara_runtime::opaque::Block;
 use madara_runtime::{AccountId, Hash, Index};
-use mc_transaction_pool::{ChainApi, EPool, EncryptedTransactionPool, Pool};
+use mc_transaction_pool::{ChainApi, EncryptedTransactionPool, Pool};
 use pallet_starknet::runtime_api::StarknetRuntimeApi;
 use sc_client_api::{Backend, StorageProvider};
 use sc_consensus_manual_seal::rpc::EngineCommand;
@@ -51,7 +51,7 @@ where
     C::Api: BlockBuilder<Block>,
     C::Api: pallet_starknet::runtime_api::StarknetRuntimeApi<Block>
         + pallet_starknet::runtime_api::ConvertTransactionRuntimeApi<Block>,
-    P: EncryptedTransactionPool<Block = Block> + EPool + 'static,
+    P: EncryptedTransactionPool<Block = Block> + 'static,
     BE: Backend<Block> + 'static,
 {
     use mc_rpc::{Starknet, StarknetRpcApiServer};

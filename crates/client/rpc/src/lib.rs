@@ -26,7 +26,7 @@ use mc_rpc_core::Felt;
 pub use mc_rpc_core::StarknetRpcApiServer;
 use mc_storage::OverrideHandle;
 use mc_transaction_pool::decryptor::Decryptor;
-use mc_transaction_pool::{ChainApi, EPool, EncryptedTransactionPool, Pool};
+use mc_transaction_pool::{ChainApi, EncryptedTransactionPool, Pool};
 use mp_starknet::crypto::merkle_patricia_tree::merkle_tree::ProofNode;
 use mp_starknet::execution::types::Felt252Wrapper;
 use mp_starknet::traits::hash::HasherT;
@@ -184,7 +184,7 @@ impl<A, B, BE, C, P, H> StarknetRpcApiServer for Starknet<A, B, BE, C, P, H>
 where
     A: ChainApi<Block = B> + 'static,
     B: BlockT,
-    P: EncryptedTransactionPool<Block = B> + EPool + 'static,
+    P: EncryptedTransactionPool<Block = B> + 'static,
     BE: Backend<B> + 'static,
     C: HeaderBackend<B> + StorageProvider<B, BE> + 'static,
     C: ProvideRuntimeApi<B>,
@@ -491,8 +491,8 @@ where
         {
             let mut lock = epool.lock().await;
             lock.initialize_if_not_exist(block_number);
-            order = lock.get_order(block_number);
-            lock.increase_not_encrypted_cnt(block_number).unwrap();
+            order = lock.get_txs(block_number).unwrap().get_order();
+            lock.get_txs(block_number).unwrap().increase_not_encrypted_cnt();
         }
 
         // TODO: if closed. add transaction to temporary pool
@@ -541,7 +541,7 @@ where
         let block_height = self.current_block_number().unwrap();
 
         if epool.clone().lock().await.is_enabled() {
-            epool.clone().lock().await.increase_order(block_height);
+            epool.clone().lock().await.get_txs(block_height).unwrap().increase_order();
         }
 
         let best_block_hash = self.client.info().best_hash;
@@ -569,8 +569,8 @@ where
         {
             let mut lock = epool.lock().await;
             lock.initialize_if_not_exist(block_number);
-            order = lock.get_order(block_number);
-            let _ = lock.increase_not_encrypted_cnt(block_number);
+            order = lock.get_txs(block_height).unwrap().get_order();
+            let _ = lock.get_txs(block_height).unwrap().increase_not_encrypted_cnt();
         }
 
         submit_extrinsic_with_order(self.pool.clone(), best_block_hash, extrinsic, order).await?;
@@ -822,7 +822,7 @@ where
         let block_height = self.current_block_number().unwrap();
 
         if epool.clone().lock().await.is_enabled() {
-            epool.clone().lock().await.increase_order(block_height);
+            epool.clone().lock().await.get_txs(block_height).unwrap().increase_order();
         }
 
         let best_block_hash = self.client.info().best_hash;
@@ -855,8 +855,8 @@ where
         {
             let mut lock = epool.lock().await;
             lock.initialize_if_not_exist(block_number);
-            order = lock.get_order(block_number);
-            let _ = lock.increase_not_encrypted_cnt(block_number);
+            order = lock.get_txs(block_height).unwrap().get_order();
+            let _ = lock.get_txs(block_height).unwrap().increase_not_encrypted_cnt();
         }
 
         submit_extrinsic_with_order(self.pool.clone(), best_block_hash, extrinsic, order).await?;
@@ -1147,7 +1147,7 @@ where
             }
 
             if lock.exist(block_number) {
-                let closed = lock.is_closed(block_number).unwrap();
+                let closed = lock.get_txs(block_number).unwrap().is_closed();
                 println!("{} : closed? {}", block_number, closed);
 
                 if closed {
@@ -1159,7 +1159,7 @@ where
             }
         }
 
-        let order = epool.clone().lock().await.set(block_number, encrypted_invoke_transaction.clone());
+        let order = epool.clone().lock().await.get_txs(block_number).unwrap().set(encrypted_invoke_transaction.clone());
 
         let chain_id = Felt252Wrapper(self.chain_id()?.0);
 
@@ -1237,7 +1237,7 @@ where
         {
             let mut lock = epool.lock().await;
 
-            encrypted_invoke_transaction = match lock.get(block_height, decryption_info.order) {
+            encrypted_invoke_transaction = match lock.get_txs(block_height).unwrap().get(decryption_info.order) {
                 Ok(encrypted_invoke_transaction) => encrypted_invoke_transaction.clone(),
                 Err(e) => {
                     error!(
@@ -1249,7 +1249,7 @@ where
                 }
             };
 
-            lock.update_key_received(block_height, decryption_info.order);
+            lock.get_txs(block_height).unwrap().update_key_received(decryption_info.order);
         }
 
         let encrypted_invoke_transaction_string = serde_json::to_string(&encrypted_invoke_transaction)?;
@@ -1290,7 +1290,7 @@ where
             .await;
         {
             // let mut lock = epool.lock();
-            epool.clone().lock().await.increase_decrypted_cnt(block_height);
+            epool.clone().lock().await.get_txs(block_height).unwrap().increase_decrypted_cnt();
         }
 
         let chain_id = Felt252Wrapper(self.chain_id()?.0);

@@ -241,22 +241,6 @@ where
     }
 }
 
-/// trait for get epool
-pub trait EPool {
-    /// get epool
-    fn epool(&self) -> Arc<TokioMutex<EncryptedPool>>;
-}
-
-impl<PoolApi, Block> EPool for BasicPool<PoolApi, Block>
-where
-    Block: BlockT,
-    PoolApi: graph::ChainApi<Block = Block> + 'static,
-{
-    fn epool(&self) -> Arc<TokioMutex<EncryptedPool>> {
-        self.epool().clone()
-    }
-}
-
 /// EncryptedTransactionPool inherit TransactionPool and add order for functions
 pub trait EncryptedTransactionPool: TransactionPool {
     /// submit_one of TransactionPool trait and add order
@@ -276,6 +260,9 @@ pub trait EncryptedTransactionPool: TransactionPool {
         xts: Vec<TransactionFor<Self>>,
         order: Option<u64>,
     ) -> PoolFuture<Vec<Result<TxHash<Self>, Self::Error>>, Self::Error>;
+
+    /// epool
+    fn epool(&self) -> Arc<TokioMutex<EncryptedPool>>;
 }
 impl<PoolApi, Block> EncryptedTransactionPool for BasicPool<PoolApi, Block>
 where
@@ -310,6 +297,10 @@ where
         self.metrics.report(|metrics| metrics.submitted_transactions.inc_by(xts.len() as u64));
 
         async move { pool.submit_at(&at, source, xts, order).await }.boxed()
+    }
+
+    fn epool(&self) -> Arc<TokioMutex<EncryptedPool>> {
+        self.epool().clone()
     }
 }
 

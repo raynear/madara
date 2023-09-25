@@ -1,6 +1,3 @@
 {
-  "eslint.workingDirectories": ["tests"],
-  "rust-analyzer.linkedProjects": [
-    "./crates/client/encrypted-mempool/transaction-pool/Cargo.toml"
-  ]
+  "eslint.workingDirectories": ["tests"]
 }

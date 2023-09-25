@@ -20,7 +20,7 @@ use hyper::{Body, Client, Request};
 use log::{debug, error, info, trace, warn};
 use mc_rpc::submit_extrinsic_with_order;
 use mc_transaction_pool::decryptor::Decryptor;
-use mc_transaction_pool::{EPool, EncryptedTransactionPool};
+use mc_transaction_pool::EncryptedTransactionPool;
 use mp_starknet::execution::types::Felt252Wrapper;
 use mp_starknet::transaction::types::{EncryptedInvokeTransaction, Transaction as MPTransaction, TxType};
 use pallet_starknet::runtime_api::{ConvertTransactionRuntimeApi, StarknetRuntimeApi};
@@ -140,7 +140,7 @@ impl<A, B, C, PR> ProposerFactory<A, B, C, PR> {
 
 impl<B, Block, C, A, PR> ProposerFactory<A, B, C, PR>
 where
-    A: EncryptedTransactionPool<Block = Block> + EPool + 'static,
+    A: EncryptedTransactionPool<Block = Block> + 'static,
     B: backend::Backend<Block> + Send + Sync + 'static,
     Block: BlockT,
     C: BlockBuilderProvider<B, Block, C> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
@@ -174,7 +174,7 @@ where
 
 impl<A, B, Block, C, PR> sp_consensus::Environment<Block> for ProposerFactory<A, B, C, PR>
 where
-    A: EncryptedTransactionPool<Block = Block> + EPool + 'static,
+    A: EncryptedTransactionPool<Block = Block> + 'static,
     B: backend::Backend<Block> + Send + Sync + 'static,
     Block: BlockT,
     C: BlockBuilderProvider<B, Block, C> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
@@ -194,7 +194,7 @@ where
 }
 
 /// The proposer logic.
-pub struct Proposer<B, Block: BlockT, C, A: EncryptedTransactionPool + EPool, PR> {
+pub struct Proposer<B, Block: BlockT, C, A: EncryptedTransactionPool, PR> {
     spawn_handle: Box<dyn SpawnNamed>,
     client: Arc<C>,
     parent_hash: Block::Hash,
@@ -209,7 +209,7 @@ pub struct Proposer<B, Block: BlockT, C, A: EncryptedTransactionPool + EPool, PR
 
 impl<A, B, Block, C, PR> sp_consensus::Proposer<Block> for Proposer<B, Block, C, A, PR>
 where
-    A: EncryptedTransactionPool<Block = Block> + EPool + 'static,
+    A: EncryptedTransactionPool<Block = Block> + 'static,
     B: backend::Backend<Block> + Send + Sync + 'static,
     Block: BlockT,
     C: BlockBuilderProvider<B, Block, C> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
@@ -263,7 +263,7 @@ const MAX_SKIPPED_TRANSACTIONS: usize = 8;
 
 impl<A, B, Block, C, PR> Proposer<B, Block, C, A, PR>
 where
-    A: EncryptedTransactionPool<Block = Block> + EPool + 'static,
+    A: EncryptedTransactionPool<Block = Block> + 'static,
     B: backend::Backend<Block> + Send + Sync + 'static,
     Block: BlockT,
     C: BlockBuilderProvider<B, Block, C> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
@@ -416,7 +416,7 @@ where
         let closed = {
             let lock = epool.lock().await;
             let exist = lock.exist(block_height);
-            if exist { lock.is_closed(block_height).unwrap() } else { false }
+            if exist { lock.get_txs(block_height).unwrap().is_closed() } else { false }
         };
 
         if enabled && !closed {
@@ -426,9 +426,8 @@ where
                 let mut lock = epool.lock().await;
                 if lock.exist(block_height) {
                     println!("close on {}", block_height);
-                    let _ = lock.close(block_height);
-
-                    let txs = lock.get_txs(block_height).unwrap();
+                    let mut txs = lock.get_txs(block_height).unwrap();
+                    let _ = txs.close();
 
                     temporary_pool = txs.get_temporary_pool();
                 }
@@ -457,7 +456,7 @@ where
             let cnt = {
                 let lock = epool.lock().await;
 
-                lock.len(block_height) as u64
+                lock.get_txs(block_height).unwrap().len() as u64
             };
 
             let start = std::time::SystemTime::now();
@@ -485,14 +484,15 @@ where
                             {
                                 let lock = epool.lock().await;
                                 // println!("check key_received on block_height {} order {}", block_height, order);
-                                let did_received_key = lock.get_key_received(block_height, order);
+                                let did_received_key = lock.get_txs(block_height).unwrap().get_key_received(order);
 
                                 if did_received_key == true {
                                     println!("Received key");
                                     return;
                                 }
                                 println!("Not received key");
-                                encrypted_invoke_transaction = lock.get(block_height, order).unwrap().clone();
+                                encrypted_invoke_transaction =
+                                    lock.get_txs(block_height).unwrap().get(order).unwrap().clone();
                             }
 
                             let decryptor = Decryptor::new();
@@ -504,17 +504,18 @@ where
                             {
                                 let mut lock = epool.lock().await;
                                 // println!("check key_received on block_height {} order {}", block_height, order);
-                                let did_received_key = lock.get_key_received(block_height, order);
+                                let did_received_key = lock.get_txs(block_height).unwrap().get_key_received(order);
 
                                 if did_received_key == true {
                                     println!("Received key");
                                     return;
                                 }
 
-                                lock.increase_decrypted_cnt(block_height);
+                                lock.get_txs(block_height).unwrap().increase_decrypted_cnt();
 
-                                let previous_closed = match lock.is_closed(block_height - 1) {
-                                    Ok(closed) => {
+                                let previous_closed = match lock.get_txs(block_height - 1) {
+                                    Ok(txs) => {
+                                        let closed = txs.is_closed();
                                         if closed {
                                             println!("{} is closed", block_height - 1);
                                         } else {
@@ -553,8 +554,8 @@ where
             {
                 let lock = epool.lock().await;
                 if lock.exist(block_height) {
-                    let tx_cnt = lock.get_tx_cnt(block_height);
-                    let dec_cnt = lock.get_decrypted_cnt(block_height);
+                    let tx_cnt = lock.get_txs(block_height).unwrap().get_tx_cnt();
+                    let dec_cnt = lock.get_txs(block_height).unwrap().get_decrypted_cnt();
                     let ready_cnt = self.transaction_pool.status().ready as u64;
                     println!("{} waiting {}:{}:{}", block_height, tx_cnt, dec_cnt, ready_cnt);
                     if !(tx_cnt == dec_cnt && dec_cnt == ready_cnt) {
