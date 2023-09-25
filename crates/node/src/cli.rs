@@ -19,6 +19,13 @@ pub enum Testnet {
     Sharingan,
 }
 
+/// Available encrypted-mempool.
+#[derive(Debug, Copy, Clone, PartialEq, clap::ValueEnum)]
+pub enum EncryptedMempool {
+    Enable,
+    Disable,
+}
+
 #[derive(Debug, clap::Parser)]
 pub struct Cli {
     #[command(subcommand)]
@@ -26,10 +33,9 @@ pub struct Cli {
 
     #[clap(flatten)]
     pub run: ExtendedRunCmd,
-
-    /// Choose sealing method.
-    #[arg(long, value_enum, ignore_case = true)]
-    pub sealing: Option<Sealing>,
+    // /// Choose sealing method.
+    // #[arg(long, value_enum, ignore_case = true)]
+    // pub sealing: Option<Sealing>,
 }
 
 #[derive(Debug, clap::Args)]
@@ -43,8 +49,17 @@ pub struct ExtendedRunCmd {
     #[clap(long)]
     pub madara_path: Option<PathBuf>,
 
+    #[arg(long, value_enum, ignore_case = true)]
+    pub sealing: Option<Sealing>,
+
     #[clap(long)]
-    pub encrypted_mempool: bool,
+    pub encrypted_mempool: Option<EncryptedMempool>,
+}
+
+#[derive(Debug)]
+pub struct ExtendedConfiguration {
+    pub sealing: Option<Sealing>,
+    pub encrypted_mempool: Option<EncryptedMempool>,
 }
 
 #[allow(clippy::large_enum_variant)]

@@ -48,7 +48,7 @@ impl SubstrateCli for Cli {
     fn load_spec(&self, id: &str) -> Result<Box<dyn sc_service::ChainSpec>, String> {
         Ok(match id {
             "dev" => {
-                let enable_manual_seal = self.sealing.map(|_| true);
+                let enable_manual_seal = self.run.sealing.map(|_| true);
                 Box::new(chain_spec::development_config(enable_manual_seal)?)
             }
             "" | "local" | "madara-local" => Box::new(chain_spec::local_testnet_config()?),
@@ -65,6 +65,9 @@ impl SubstrateCli for Cli {
 pub fn run() -> sc_cli::Result<()> {
     let mut cli = Cli::from_args();
 
+    let extended_config =
+        crate::cli::ExtendedConfiguration { sealing: cli.run.sealing, encrypted_mempool: cli.run.encrypted_mempool };
+
     match &cli.subcommand {
         Some(Subcommand::Key(cmd)) => cmd.run(&cli),
         Some(Subcommand::BuildSpec(cmd)) => {
@@ -74,30 +77,28 @@ pub fn run() -> sc_cli::Result<()> {
         Some(Subcommand::CheckBlock(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             runner.async_run(|mut config| {
-                let (client, _, import_queue, task_manager, _) =
-                    service::new_chain_ops(&mut config, cli.run.encrypted_mempool)?;
+                let (client, _, import_queue, task_manager, _) = service::new_chain_ops(&mut config, &extended_config)?;
                 Ok((cmd.run(client, import_queue), task_manager))
             })
         }
         Some(Subcommand::ExportBlocks(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             runner.async_run(|mut config| {
-                let (client, _, _, task_manager, _) = service::new_chain_ops(&mut config, cli.run.encrypted_mempool)?;
+                let (client, _, _, task_manager, _) = service::new_chain_ops(&mut config, &extended_config)?;
                 Ok((cmd.run(client, config.database), task_manager))
             })
         }
         Some(Subcommand::ExportState(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             runner.async_run(|mut config| {
-                let (client, _, _, task_manager, _) = service::new_chain_ops(&mut config, cli.run.encrypted_mempool)?;
+                let (client, _, _, task_manager, _) = service::new_chain_ops(&mut config, &extended_config)?;
                 Ok((cmd.run(client, config.chain_spec), task_manager))
             })
         }
         Some(Subcommand::ImportBlocks(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             runner.async_run(|mut config| {
-                let (client, _, import_queue, task_manager, _) =
-                    service::new_chain_ops(&mut config, cli.run.encrypted_mempool)?;
+                let (client, _, import_queue, task_manager, _) = service::new_chain_ops(&mut config, &extended_config)?;
                 Ok((cmd.run(client, import_queue), task_manager))
             })
         }
@@ -108,8 +109,7 @@ pub fn run() -> sc_cli::Result<()> {
         Some(Subcommand::Revert(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             runner.async_run(|mut config| {
-                let (client, backend, _, task_manager, _) =
-                    service::new_chain_ops(&mut config, cli.run.encrypted_mempool)?;
+                let (client, backend, _, task_manager, _) = service::new_chain_ops(&mut config, &extended_config)?;
                 let aux_revert = Box::new(|client, _, blocks| {
                     sc_consensus_grandpa::revert(client, blocks)?;
                     Ok(())
@@ -134,7 +134,7 @@ pub fn run() -> sc_cli::Result<()> {
                         cmd.run::<Block, service::ExecutorDispatch>(config)
                     }
                     BenchmarkCmd::Block(cmd) => {
-                        let (client, _, _, _, _) = service::new_chain_ops(&mut config, cli.run.encrypted_mempool)?;
+                        let (client, _, _, _, _) = service::new_chain_ops(&mut config, &extended_config)?;
                         cmd.run(client)
                     }
                     #[cfg(not(feature = "runtime-benchmarks"))]
@@ -143,21 +143,20 @@ pub fn run() -> sc_cli::Result<()> {
                     }
                     #[cfg(feature = "runtime-benchmarks")]
                     BenchmarkCmd::Storage(cmd) => {
-                        let (client, backend, _, _, _) =
-                            service::new_chain_ops(&mut config, cli.run.encrypted_mempool)?;
+                        let (client, backend, _, _, _) = service::new_chain_ops(&mut config, &extended_config)?;
                         let db = backend.expose_db();
                         let storage = backend.expose_storage();
 
                         cmd.run(config, client, db, storage)
                     }
                     BenchmarkCmd::Overhead(cmd) => {
-                        let (client, _, _, _, _) = service::new_chain_ops(&mut config, cli.run.encrypted_mempool)?;
+                        let (client, _, _, _, _) = service::new_chain_ops(&mut config, &extended_config)?;
                         let ext_builder = RemarkBuilder::new(client.clone());
 
                         cmd.run(config, client, inherent_benchmark_data()?, Vec::new(), &ext_builder)
                     }
                     BenchmarkCmd::Extrinsic(cmd) => {
-                        let (client, _, _, _, _) = service::new_chain_ops(&mut config, cli.run.encrypted_mempool)?;
+                        let (client, _, _, _, _) = service::new_chain_ops(&mut config, &extended_config)?;
                         // Register the *Remark* builder.
                         let ext_factory = ExtrinsicFactory(vec![Box::new(RemarkBuilder::new(client.clone()))]);
 
@@ -222,7 +221,7 @@ pub fn run() -> sc_cli::Result<()> {
 
             let runner = cli.create_runner(&cli.run.run_cmd)?;
             runner.run_node_until_exit(|config| async move {
-                service::new_full(config, cli.sealing, cli.run.encrypted_mempool).map_err(sc_cli::Error::Service)
+                service::new_full(config, extended_config).map_err(sc_cli::Error::Service)
             })
         }
     }
