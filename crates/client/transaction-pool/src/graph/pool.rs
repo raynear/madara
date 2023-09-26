@@ -30,10 +30,11 @@ use sp_runtime::traits::{self, Block as BlockT, SaturatedConversion};
 use sp_runtime::transaction_validity::{
     TransactionSource, TransactionTag as Tag, TransactionValidity, TransactionValidityError,
 };
+use tokio::sync::Mutex;
 
-use super::base_pool as base;
 use super::validated_pool::{IsValidator, ValidatedPool, ValidatedTransaction};
 use super::watcher::Watcher;
+use super::{base_pool as base, EncryptedPool};
 use crate::LOG_TARGET;
 
 /// Modification notification event stream type;
@@ -161,12 +162,16 @@ enum CheckBannedBeforeVerify {
 /// Extrinsics pool that performs validation.
 pub struct Pool<B: ChainApi> {
     validated_pool: Arc<ValidatedPool<B>>,
+    encrypted_pool: Arc<Mutex<EncryptedPool>>,
 }
 
 impl<B: ChainApi> Pool<B> {
     /// Create a new transaction pool.
     pub fn new(options: Options, is_validator: IsValidator, api: Arc<B>) -> Self {
-        Self { validated_pool: Arc::new(ValidatedPool::new(options, is_validator, api)) }
+        Self {
+            validated_pool: Arc::new(ValidatedPool::new(options, is_validator, api)),
+            encrypted_pool: Arc::new(Mutex::new(EncryptedPool::new(true))),
+        }
     }
 
     /// Imports a bunch of unverified extrinsics to the pool
@@ -448,10 +453,15 @@ impl<B: ChainApi> Pool<B> {
     pub fn validated_pool(&self) -> &ValidatedPool<B> {
         &self.validated_pool
     }
+
+    /// get encrypted pool
+    pub fn encrypted_pool(&self) -> Arc<Mutex<EncryptedPool>> {
+        self.encrypted_pool.clone()
+    }
 }
 
 impl<B: ChainApi> Clone for Pool<B> {
     fn clone(&self) -> Self {
-        Self { validated_pool: self.validated_pool.clone() }
+        Self { validated_pool: self.validated_pool.clone(), encrypted_pool: self.encrypted_pool.clone() }
     }
 }

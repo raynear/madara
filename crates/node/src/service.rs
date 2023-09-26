@@ -33,7 +33,7 @@ use sp_offchain::STORAGE_PREFIX;
 use sp_runtime::traits::BlakeTwo256;
 use sp_trie::PrefixedMemoryDB;
 
-use crate::cli::{EncryptedMempool, ExtendedConfiguration, Sealing};
+use crate::cli::{Cli, EncryptedMempool, Sealing};
 use crate::genesis_block::MadaraGenesisBlockBuilder;
 use crate::rpc::StarknetDeps;
 use crate::starknet::{db_config_dir, MadaraBackend};
@@ -67,7 +67,7 @@ type BoxBlockImport<Client> = sc_consensus::BoxBlockImport<Block, TransactionFor
 #[allow(clippy::type_complexity)]
 pub fn new_partial<BIQ>(
     config: &Configuration,
-    extended_config: &ExtendedConfiguration,
+    cli: Cli,
     build_import_queue: BIQ,
 ) -> Result<
     sc_service::PartialComponents<
@@ -148,7 +148,7 @@ where
         config.prometheus_registry(),
         task_manager.spawn_essential_handle(),
         client.clone(),
-        extended_config.encrypted_mempool.unwrap() == EncryptedMempool::Enable,
+        cli.run.encrypted_mempool.unwrap() == EncryptedMempool::Enable,
     );
 
     let (grandpa_block_import, grandpa_link) = sc_consensus_grandpa::block_import(
@@ -246,8 +246,8 @@ where
 }
 
 /// Builds a new service for a full client.
-pub fn new_full(config: Configuration, extended_config: ExtendedConfiguration) -> Result<TaskManager, ServiceError> {
-    let sealing = extended_config.sealing;
+pub fn new_full(config: Configuration, cli: Cli) -> Result<TaskManager, ServiceError> {
+    let sealing = cli.run.sealing;
     let build_import_queue =
         if sealing.is_some() { build_manual_seal_import_queue } else { build_aura_grandpa_import_queue };
 
@@ -260,7 +260,7 @@ pub fn new_full(config: Configuration, extended_config: ExtendedConfiguration) -
         select_chain,
         transaction_pool,
         other: (block_import, grandpa_link, mut telemetry, madara_backend),
-    } = new_partial(&config, &extended_config, build_import_queue)?;
+    } = new_partial(&config, cli, build_import_queue)?;
 
     let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
 
@@ -376,7 +376,7 @@ pub fn new_full(config: Configuration, extended_config: ExtendedConfiguration) -
         // manual-seal authorship
         if let Some(sealing) = sealing {
             run_manual_seal_authorship(
-                extended_config,
+                sealing,
                 client,
                 transaction_pool,
                 select_chain,
@@ -498,7 +498,7 @@ pub fn new_full(config: Configuration, extended_config: ExtendedConfiguration) -
 
 #[allow(clippy::too_many_arguments)]
 fn run_manual_seal_authorship(
-    extended_config: ExtendedConfiguration,
+    sealing: Sealing,
     client: Arc<FullClient>,
     transaction_pool: Arc<FullPool<Block, FullClient>>,
     select_chain: FullSelectChain,
@@ -511,7 +511,6 @@ where
     RuntimeApi: ConstructRuntimeApi<Block, FullClient>,
     RuntimeApi: Send + Sync + 'static,
 {
-    let sealing = extended_config.sealing.unwrap();
     let proposer_factory = ProposerFactory::new(
         task_manager.spawn_handle(),
         client.clone(),
@@ -594,9 +593,9 @@ type ChainOpsResult = Result<
     ServiceError,
 >;
 
-pub fn new_chain_ops(mut config: &mut Configuration, extended_config: &ExtendedConfiguration) -> ChainOpsResult {
+pub fn new_chain_ops(mut config: &mut Configuration, cli: Cli) -> ChainOpsResult {
     config.keystore = sc_service::config::KeystoreConfig::InMemory;
     let sc_service::PartialComponents { client, backend, import_queue, task_manager, other, .. } =
-        new_partial::<_>(config, extended_config, build_aura_grandpa_import_queue)?;
+        new_partial::<_>(config, cli, build_aura_grandpa_import_queue)?;
     Ok((client, backend, import_queue, task_manager, other.3))
 }

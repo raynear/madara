@@ -405,7 +405,7 @@ where
         deadline: time::Instant,
         block_size_limit: Option<usize>,
     ) -> Result<EndProposingReason, sp_blockchain::Error> {
-        let epool = self.transaction_pool.epool().clone();
+        let epool = self.transaction_pool.encrypted_pool().clone();
         let block_height = self.parent_number.to_string().parse::<u64>().unwrap() + 1;
 
         let enabled = {
@@ -469,7 +469,7 @@ where
                 let client = self.client.clone();
                 let pool = self.transaction_pool.clone();
                 let chain_id = Felt252Wrapper(client.runtime_api().chain_id(best_block_hash).unwrap().into());
-                let epool = self.transaction_pool.epool().clone();
+                let epool = self.transaction_pool.encrypted_pool().clone();
                 self.spawn_handle.spawn_blocking(
                     "Decryptor",
                     None,
