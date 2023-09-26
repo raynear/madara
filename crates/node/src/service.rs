@@ -67,7 +67,7 @@ type BoxBlockImport<Client> = sc_consensus::BoxBlockImport<Block, TransactionFor
 #[allow(clippy::type_complexity)]
 pub fn new_partial<BIQ>(
     config: &Configuration,
-    cli: Cli,
+    cli: &Cli,
     build_import_queue: BIQ,
 ) -> Result<
     sc_service::PartialComponents<
@@ -260,7 +260,7 @@ pub fn new_full(config: Configuration, cli: Cli) -> Result<TaskManager, ServiceE
         select_chain,
         transaction_pool,
         other: (block_import, grandpa_link, mut telemetry, madara_backend),
-    } = new_partial(&config, cli, build_import_queue)?;
+    } = new_partial(&config, &cli, build_import_queue)?;
 
     let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
 
@@ -593,7 +593,7 @@ type ChainOpsResult = Result<
     ServiceError,
 >;
 
-pub fn new_chain_ops(mut config: &mut Configuration, cli: Cli) -> ChainOpsResult {
+pub fn new_chain_ops(mut config: &mut Configuration, cli: &Cli) -> ChainOpsResult {
     config.keystore = sc_service::config::KeystoreConfig::InMemory;
     let sc_service::PartialComponents { client, backend, import_queue, task_manager, other, .. } =
         new_partial::<_>(config, cli, build_aura_grandpa_import_queue)?;
