@@ -490,17 +490,17 @@ where
         {
             let mut lock = epool.lock().await;
             lock.initialize_if_not_exist(block_height);
-            let txs = lock.txs.get(&block_height).unwrap();
+            let txs = lock.txs.get_mut(&block_height).unwrap();
             if txs.is_closed() {
                 let big_block_height = block_height + 1;
                 lock.initialize_if_not_exist(big_block_height);
-                let next_txs = lock.txs.get(&big_block_height).unwrap();
+                let next_txs = lock.txs.get_mut(&big_block_height).unwrap();
 
                 println!("{} is closed.. push on temporary pool of {}", block_height - 1, block_height);
                 let order = next_txs.get_order();
-                next_txs.clone().add_tx_to_temporary_pool(order, transaction.clone());
+                next_txs.add_tx_to_temporary_pool(order, transaction.clone());
             } else {
-                txs.clone().increase_not_encrypted_cnt();
+                txs.increase_not_encrypted_cnt();
                 let order = txs.get_order();
                 submit_extrinsic_with_order(self.pool.clone(), best_block_hash, extrinsic, order).await?;
             }
@@ -530,8 +530,8 @@ where
             let mut lock = epool.lock().await;
             if lock.is_enabled() {
                 lock.initialize_if_not_exist(block_height);
-                let txs = lock.txs.get(&block_height).unwrap();
-                txs.clone().increase_order();
+                let txs = lock.txs.get_mut(&block_height).unwrap();
+                txs.increase_order();
             }
         }
 
@@ -560,9 +560,9 @@ where
         {
             let mut lock = epool.lock().await;
             lock.initialize_if_not_exist(block_height);
-            let txs = lock.txs.get(&block_height).unwrap();
-            order = txs.clone().get_order();
-            let _ = txs.clone().increase_not_encrypted_cnt();
+            let txs = lock.txs.get_mut(&block_height).unwrap();
+            order = txs.get_order();
+            let _ = txs.increase_not_encrypted_cnt();
         }
 
         submit_extrinsic_with_order(self.pool.clone(), best_block_hash, extrinsic, order).await?;
@@ -817,8 +817,8 @@ where
             let mut lock = epool.lock().await;
             if lock.is_enabled() {
                 lock.initialize_if_not_exist(block_height);
-                let txs = lock.txs.get(&block_height).unwrap();
-                txs.clone().increase_order();
+                let txs = lock.txs.get_mut(&block_height).unwrap();
+                txs.increase_order();
             }
         }
 
@@ -852,9 +852,9 @@ where
         {
             let mut lock = epool.lock().await;
             lock.initialize_if_not_exist(block_height);
-            let txs = lock.txs.get(&block_height).unwrap();
-            order = txs.clone().get_order();
-            let _ = txs.clone().increase_not_encrypted_cnt();
+            let txs = lock.txs.get_mut(&block_height).unwrap();
+            order = txs.get_order();
+            let _ = txs.increase_not_encrypted_cnt();
         }
 
         submit_extrinsic_with_order(self.pool.clone(), best_block_hash, extrinsic, order).await?;
@@ -1144,7 +1144,7 @@ where
                 return Err(StarknetRpcApiError::EncryptedMempoolDisabled.into());
             }
 
-            match lock.txs.get(&block_height) {
+            match lock.txs.get_mut(&block_height) {
                 Some(_) => {
                     println!("txs exist {}", block_height);
                 }
@@ -1153,7 +1153,7 @@ where
                     lock.txs.insert(block_height, Txs::new());
                 }
             }
-            lock.initialize_if_not_exist(block_height);
+            // lock.initialize_if_not_exist(block_height);
             let txs = lock.txs.get(&block_height).expect("expect get txs");
             // let txs = lock.txs.get(&block_height).unwrap();
 
@@ -1166,11 +1166,20 @@ where
             } else {
                 println!("still open");
             }
-            lock.initialize_if_not_exist(block_height);
+            // lock.initialize_if_not_exist(block_height);
+            match lock.txs.get(&block_height) {
+                Some(_) => {
+                    println!("txs exist {}", block_height);
+                }
+                None => {
+                    println!("txs not exist create new one for {}", block_height);
+                    lock.txs.insert(block_height, Txs::new());
+                }
+            }
 
-            let txs = lock.txs.get(&block_height).unwrap();
+            let txs = lock.txs.get_mut(&block_height).unwrap();
 
-            txs.clone().set(encrypted_invoke_transaction.clone());
+            txs.set(encrypted_invoke_transaction.clone());
 
             let tx_cnt = txs.len();
             println!("1. added length {} {}", tx_cnt, txs.get_order());
@@ -1271,7 +1280,7 @@ where
                 }
             };
 
-            lock.txs.get(&block_height).unwrap().clone().update_key_received(decryption_info.order);
+            lock.txs.get_mut(&block_height).unwrap().clone().update_key_received(decryption_info.order);
         }
 
         let encrypted_invoke_transaction_string = serde_json::to_string(&encrypted_invoke_transaction)?;

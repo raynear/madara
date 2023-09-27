@@ -412,7 +412,7 @@ where
             let exist = lock.exist(block_height);
             if exist {
                 // lock.get_txs(block_height).unwrap().is_closed()
-                lock.txs.get(&block_height).unwrap().is_closed()
+                lock.txs.get_mut(&block_height).unwrap().is_closed()
             } else {
                 lock.initialize_if_not_exist(block_height);
                 println!("log1");
@@ -427,16 +427,16 @@ where
             // add temporary pool tx to pool
             let mut temporary_pool: Vec<(u64, MPTransaction)> = vec![];
             {
-                let lock = epool.lock().await;
+                let mut lock = epool.lock().await;
                 println!("close on {}", block_height);
-                let txs = lock.txs.get(&block_height).unwrap();
+                let txs = lock.txs.get_mut(&block_height).unwrap();
                 // let mut txs = lock.get_txs(block_height).unwrap();
 
                 let tx_cnt = txs.get_tx_cnt();
                 let dec_cnt = txs.get_decrypted_cnt();
                 println!("test1: {}:{}", tx_cnt, dec_cnt);
 
-                let _ = txs.clone().close();
+                let _ = txs.close();
 
                 temporary_pool = txs.get_temporary_pool();
             }
@@ -512,7 +512,7 @@ where
                             // println!("decrypt done on block_height {} order {}", block_height, order);
 
                             {
-                                let lock = epool.lock().await;
+                                let mut lock = epool.lock().await;
                                 // println!("check key_received on block_height {} order {}", block_height, order);
                                 let did_received_key = lock.txs.get(&block_height).unwrap().get_key_received(order);
                                 // let did_received_key = lock.get_txs(block_height).unwrap().get_key_received(order);
@@ -522,7 +522,7 @@ where
                                     return;
                                 }
 
-                                lock.txs.get(&block_height).unwrap().clone().increase_decrypted_cnt();
+                                lock.txs.get_mut(&block_height).unwrap().increase_decrypted_cnt();
                                 // lock.get_txs(block_height).unwrap().clone().
                                 // increase_decrypted_cnt();
                             }
