@@ -19,13 +19,6 @@ pub enum Testnet {
     Sharingan,
 }
 
-/// Available encrypted-mempool.
-#[derive(Debug, Copy, Clone, PartialEq, clap::ValueEnum)]
-pub enum EncryptedMempool {
-    Enable,
-    Disable,
-}
-
 #[derive(Debug, clap::Parser)]
 pub struct Cli {
     #[command(subcommand)]
@@ -53,13 +46,13 @@ pub struct ExtendedRunCmd {
     pub sealing: Option<Sealing>,
 
     #[clap(long)]
-    pub encrypted_mempool: Option<EncryptedMempool>,
+    pub encrypted_mempool: bool,
 }
 
 #[derive(Debug)]
 pub struct ExtendedConfiguration {
     pub sealing: Option<Sealing>,
-    pub encrypted_mempool: Option<EncryptedMempool>,
+    pub encrypted_mempool: bool,
 }
 
 #[allow(clippy::large_enum_variant)]

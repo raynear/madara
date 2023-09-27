@@ -1,5 +1,5 @@
+use std::env;
 use std::path::Path;
-use std::{env, thread, time};
 
 use base64::engine::general_purpose;
 use base64::Engine as _;
@@ -11,6 +11,7 @@ use rocksdb::{Error, IteratorMode, DB};
 use serde_json::{json, Value};
 use tokio;
 use tokio::runtime::Runtime;
+use tokio::time::{sleep, Duration};
 
 // Import Lazy from the lazy_static crate
 // Import the Error type from rocksdb crate
@@ -194,7 +195,7 @@ async fn submit_to_da(data: String) -> Result<String, Box<dyn std::error::Error>
     }
 }
 
-pub fn sync_with_da() {
+pub async fn sync_with_da() {
     println!(
         "
         @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -244,7 +245,7 @@ pub fn sync_with_da() {
     };
 
     loop {
-        thread::sleep(time::Duration::from_millis(3000));
+        sleep(Duration::from_millis(3000)).await;
         let sync = SYNC_DB.read("sync".to_string());
         let sync_target = SYNC_DB.read("sync_target".to_string());
 

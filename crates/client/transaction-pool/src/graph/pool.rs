@@ -167,10 +167,10 @@ pub struct Pool<B: ChainApi> {
 
 impl<B: ChainApi> Pool<B> {
     /// Create a new transaction pool.
-    pub fn new(options: Options, is_validator: IsValidator, api: Arc<B>) -> Self {
+    pub fn new(options: Options, is_validator: IsValidator, api: Arc<B>, encrypted_mempool: bool) -> Self {
         Self {
             validated_pool: Arc::new(ValidatedPool::new(options, is_validator, api)),
-            encrypted_pool: Arc::new(Mutex::new(EncryptedPool::new(true))),
+            encrypted_pool: Arc::new(Mutex::new(EncryptedPool::new(encrypted_mempool))),
         }
     }
 

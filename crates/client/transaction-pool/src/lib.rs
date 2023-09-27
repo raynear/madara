@@ -42,7 +42,7 @@ use futures::future::{self, ready};
 use futures::prelude::*;
 pub use graph::base_pool::Limit as PoolLimit;
 pub use graph::{
-    ChainApi, EncryptedPool, ExtrinsicHash, IsValidator, Options, Pool, Transaction, ValidatedTransaction,
+    ChainApi, EncryptedPool, ExtrinsicHash, IsValidator, Options, Pool, Transaction, Txs, ValidatedTransaction,
 };
 use parking_lot::Mutex;
 use prometheus_endpoint::Registry as PrometheusRegistry;
@@ -158,7 +158,7 @@ where
         finalized_hash: Block::Hash,
         encrypted_mempool: bool,
     ) -> (Self, Pin<Box<dyn Future<Output = ()> + Send>>) {
-        let pool = Arc::new(graph::Pool::new(Default::default(), true.into(), pool_api.clone()));
+        let pool = Arc::new(graph::Pool::new(Default::default(), true.into(), pool_api.clone(), encrypted_mempool));
         let (revalidation_queue, background_task) =
             revalidation::RevalidationQueue::new_background(pool_api.clone(), pool.clone());
         (
@@ -190,7 +190,7 @@ where
         finalized_hash: Block::Hash,
         encrypted_mempool: bool,
     ) -> Self {
-        let pool = Arc::new(graph::Pool::new(options, is_validator, pool_api.clone()));
+        let pool = Arc::new(graph::Pool::new(options, is_validator, pool_api.clone(), encrypted_mempool));
 
         let (revalidation_queue, background_task) = match revalidation_type {
             RevalidationType::Light => (revalidation::RevalidationQueue::new(pool_api.clone(), pool.clone()), None),

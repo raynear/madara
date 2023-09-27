@@ -5,18 +5,13 @@
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time;
 use std::time::{Duration, UNIX_EPOCH};
-use std::{env, time};
 
-use base64::engine::general_purpose;
-use base64::Engine as _;
 use codec::Encode;
-use dotenv::dotenv;
 use futures::channel::oneshot;
 use futures::future::{Future, FutureExt};
 use futures::{future, select};
-use hyper::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
-use hyper::{Body, Client, Request};
 use log::{debug, error, info, trace, warn};
 use mc_rpc::submit_extrinsic_with_order;
 use mc_transaction_pool::decryptor::Decryptor;
@@ -29,7 +24,6 @@ use sc_block_builder::{BlockBuilderApi, BlockBuilderProvider};
 use sc_client_api::backend;
 use sc_proposer_metrics::{EndProposingReason, MetricsLink as PrometheusMetrics};
 use sc_transaction_pool_api::{InPoolTransaction, TransactionSource};
-use serde_json::{json, Value};
 use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_blockchain::ApplyExtrinsicFailed::Validity;
 use sp_blockchain::Error::ApplyExtrinsicFailed;
@@ -414,23 +408,37 @@ where
         };
 
         let closed = {
-            let lock = epool.lock().await;
+            let mut lock = epool.lock().await;
             let exist = lock.exist(block_height);
-            if exist { lock.get_txs(block_height).unwrap().is_closed() } else { false }
+            if exist {
+                // lock.get_txs(block_height).unwrap().is_closed()
+                lock.txs.get(&block_height).unwrap().is_closed()
+            } else {
+                lock.initialize_if_not_exist(block_height);
+                println!("log1");
+                let len = lock.txs.get(&block_height).unwrap().len();
+                // let len = lock.get_txs(block_height).unwrap().len();
+                println!("{}", len);
+                false
+            }
         };
 
         if enabled && !closed {
             // add temporary pool tx to pool
             let mut temporary_pool: Vec<(u64, MPTransaction)> = vec![];
             {
-                let mut lock = epool.lock().await;
-                if lock.exist(block_height) {
-                    println!("close on {}", block_height);
-                    let mut txs = lock.get_txs(block_height).unwrap();
-                    let _ = txs.close();
+                let lock = epool.lock().await;
+                println!("close on {}", block_height);
+                let txs = lock.txs.get(&block_height).unwrap();
+                // let mut txs = lock.get_txs(block_height).unwrap();
 
-                    temporary_pool = txs.get_temporary_pool();
-                }
+                let tx_cnt = txs.get_tx_cnt();
+                let dec_cnt = txs.get_decrypted_cnt();
+                println!("test1: {}:{}", tx_cnt, dec_cnt);
+
+                let _ = txs.clone().close();
+
+                temporary_pool = txs.get_temporary_pool();
             }
 
             let best_block_hash = self.client.info().best_hash;
@@ -456,7 +464,8 @@ where
             let cnt = {
                 let lock = epool.lock().await;
 
-                lock.get_txs(block_height).unwrap().len() as u64
+                lock.txs.get(&block_height).unwrap().len() as u64
+                // lock.get_txs(block_height).unwrap().len() as u64
             };
 
             let start = std::time::SystemTime::now();
@@ -483,16 +492,17 @@ where
                             let encrypted_invoke_transaction: EncryptedInvokeTransaction;
                             {
                                 let lock = epool.lock().await;
+                                let txs = lock.txs.get(&block_height).expect("expect get txs");
+                                // let txs = lock.get_txs(block_height).unwrap();
                                 // println!("check key_received on block_height {} order {}", block_height, order);
-                                let did_received_key = lock.get_txs(block_height).unwrap().get_key_received(order);
+                                let did_received_key = txs.get_key_received(order);
 
                                 if did_received_key == true {
                                     println!("Received key");
                                     return;
                                 }
                                 println!("Not received key");
-                                encrypted_invoke_transaction =
-                                    lock.get_txs(block_height).unwrap().get(order).unwrap().clone();
+                                encrypted_invoke_transaction = txs.get(order).unwrap().clone();
                             }
 
                             let decryptor = Decryptor::new();
@@ -502,32 +512,19 @@ where
                             // println!("decrypt done on block_height {} order {}", block_height, order);
 
                             {
-                                let mut lock = epool.lock().await;
+                                let lock = epool.lock().await;
                                 // println!("check key_received on block_height {} order {}", block_height, order);
-                                let did_received_key = lock.get_txs(block_height).unwrap().get_key_received(order);
+                                let did_received_key = lock.txs.get(&block_height).unwrap().get_key_received(order);
+                                // let did_received_key = lock.get_txs(block_height).unwrap().get_key_received(order);
 
                                 if did_received_key == true {
                                     println!("Received key");
                                     return;
                                 }
 
-                                lock.get_txs(block_height).unwrap().increase_decrypted_cnt();
-
-                                let previous_closed = match lock.get_txs(block_height - 1) {
-                                    Ok(txs) => {
-                                        let closed = txs.is_closed();
-                                        if closed {
-                                            println!("{} is closed", block_height - 1);
-                                        } else {
-                                            println!("{} is not closed", block_height - 1);
-                                        };
-                                        closed
-                                    }
-                                    Err(_e) => {
-                                        println!("no state for {}", block_height - 1);
-                                        false
-                                    }
-                                };
+                                lock.txs.get(&block_height).unwrap().clone().increase_decrypted_cnt();
+                                // lock.get_txs(block_height).unwrap().clone().
+                                // increase_decrypted_cnt();
                             }
 
                             let end = std::time::SystemTime::now();
@@ -554,8 +551,10 @@ where
             {
                 let lock = epool.lock().await;
                 if lock.exist(block_height) {
-                    let tx_cnt = lock.get_txs(block_height).unwrap().get_tx_cnt();
-                    let dec_cnt = lock.get_txs(block_height).unwrap().get_decrypted_cnt();
+                    let txs = lock.txs.get(&block_height).expect("expect get txs");
+                    // let txs = lock.get_txs(block_height).unwrap();
+                    let tx_cnt = txs.get_tx_cnt();
+                    let dec_cnt = txs.get_decrypted_cnt();
                     let ready_cnt = self.transaction_pool.status().ready as u64;
                     println!("{} waiting {}:{}:{}", block_height, tx_cnt, dec_cnt, ready_cnt);
                     if !(tx_cnt == dec_cnt && dec_cnt == ready_cnt) {
@@ -596,7 +595,7 @@ where
         let mut transaction_pushed = false;
 
         // {
-        //     let mut lock = epool.lock().await;
+        //     let lock = epool.lock().await;
         //     if lock.is_enabled() {
         //         let block_height = self.parent_number.to_string().parse::<u64>().unwrap() + 1;
         //          let encrypted_tx_pool_size: usize = lock.len(block_height);

@@ -70,7 +70,7 @@ impl Txs {
 
     /// len
     pub fn len(&self) -> usize {
-        self.encrypted_pool.values().cloned().collect::<Vec<_>>().len()
+        self.encrypted_pool.values().collect::<Vec<_>>().len()
     }
 
     /// is close
@@ -163,7 +163,7 @@ impl Txs {
 /// * `enabled`: epool enabler. if whole part is splitted by package. it have to be removed.
 pub struct EncryptedPool {
     /// Map of Txs, key:value = block_height:Txs
-    txs: HashMap<u64, Txs>,
+    pub txs: HashMap<u64, Txs>,
     /// epool enabler. if whole part is splitted by package. it have to be removed.
     enabled: bool,
 }
@@ -196,8 +196,9 @@ impl EncryptedPool {
 
     /// add new Txs for block_height
     pub fn new_block(&mut self, block_height: u64) -> Txs {
-        self.txs.insert(block_height, Txs::new()).unwrap()
-        // self.txs.get(&block_height).unwrap().clone()
+        println!("insert on {}", block_height);
+        self.txs.insert(block_height, Txs::new());
+        self.txs.get(&block_height).unwrap().clone()
     }
 
     /// txs exist
@@ -218,13 +219,13 @@ impl EncryptedPool {
 
     ///
     pub fn initialize_if_not_exist(&mut self, block_height: u64) {
-        match self.txs.get_mut(&block_height) {
-            Some(_txs) => {
-                println!("txs exist add tx");
+        match self.txs.get(&block_height) {
+            Some(_) => {
+                println!("txs exist {}", block_height);
             }
             None => {
-                println!("txs not exist");
-                self.txs.insert(block_height, Txs::new());
+                self.new_block(block_height);
+                println!("txs not exist create new one for {}", block_height);
             }
         }
     }
