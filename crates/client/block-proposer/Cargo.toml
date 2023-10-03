@@ -17,9 +17,9 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.2.2" }
-futures = "0.3.21"
-futures-timer = "3.0.1"
-log = "0.4.19"
+futures = { workspace = true }
+futures-timer = { workspace = true }
+log = { workspace = true }
 prometheus-endpoint = { workspace = true }
 sc-block-builder = { workspace = true }
 sc-client-api = { workspace = true }
@@ -35,10 +35,14 @@ sp-runtime = { workspace = true }
 parking_lot = { workspace = true }
 mc-transaction-pool = { workspace = true }
 serde_json = { workspace = true }
-hyper = "0.14.27"
-tokio = "1.30.0"
-base64 = "0.21.2"
-dotenv = "0.15"
+pallet-starknet = { workspace = true, default-features = true }
+mc-rpc = { workspace = true }
+mp-starknet = { workspace = true }
+madara-runtime = { workspace = true }
+hyper = { workspace = true }
+tokio = { workspace = true }
+base64 = { workspace = true }
+dotenv = { workspace = true }
 
 [dev-dependencies]
 sc-transaction-pool = { workspace = true }

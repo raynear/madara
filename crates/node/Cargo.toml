@@ -20,14 +20,16 @@ targets = ["x86_64-unknown-linux-gnu"]
 name = "madara"
 
 [dependencies]
-parking_lot = "0.12.1"
-async-trait = "0.1"
+parking_lot = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 futures = { workspace = true, features = ["thread-pool"] }
 log = { workspace = true }
 serde = { workspace = true }
 
 frame-system = { workspace = true }
+mc-sync-block = { workspace = true }
 sc-cli = { workspace = true }
 sc-client-api = { workspace = true }
 sc-consensus = { workspace = true }
