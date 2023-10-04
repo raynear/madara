@@ -16,16 +16,16 @@ use tokio::time::{sleep, Duration};
 // Import Lazy from the lazy_static crate
 // Import the Error type from rocksdb crate
 // Define a struct to hold the DB instance.
-pub struct MyDatabase {
+pub struct SyncDB {
     db: DB,
 }
 
-impl MyDatabase {
+impl SyncDB {
     // Constructor to open the database.
-    fn open() -> Result<MyDatabase, Error> {
+    fn open() -> Result<SyncDB, Error> {
         let path = Path::new("epool");
         let db = DB::open_default(&path)?;
-        Ok(MyDatabase { db })
+        Ok(SyncDB { db })
     }
 
     // Method to perform a read operation.
@@ -93,7 +93,7 @@ impl MyDatabase {
             match result {
                 Ok((key, value)) => {
                     // println!("display_all_data: key: {:?} value {:?}", key, value);
-                    println!("display_all_data: key: {:?} value.len(): {:?}", key, value.len());
+                    println!("key: {:?} value: {:?}", key, value);
                 }
                 Err(err) => {
                     eprintln!("There is an error! {:?}", err);
@@ -118,10 +118,10 @@ impl MyDatabase {
     }
 }
 
-// Create a global instance of MyDatabase that can be accessed from other modules.
+// Create a global instance of SyncDB that can be accessed from other modules.
 lazy_static! {
-    pub static ref SYNC_DB: MyDatabase = {
-        let db = MyDatabase::open().unwrap_or_else(|err| {
+    pub static ref SYNC_DB: SyncDB = {
+        let db = SyncDB::open().unwrap_or_else(|err| {
             eprintln!("Failed to open database: {:?}", err);
             std::process::exit(1); // Exit the program on error
         });
@@ -132,7 +132,7 @@ lazy_static! {
         db.write("sync".to_string(), "0".to_string());
         db.write("sync_target".to_string(), "0".to_string());
 
-        db // Return the initialized MyDatabase
+        db // Return the initialized SyncDB
     };
 }
 
@@ -165,6 +165,55 @@ async fn submit_to_da(data: String) -> Result<String, Box<dyn std::error::Error>
                     "namespace": da_namespace,
                     "data": encoded_data,
                 }
+            ]
+        ],
+    });
+
+    // Create a mutable request builder
+    let request_builder = Request::builder()
+        .method("POST")
+        .uri(&da_host)
+        .header("Authorization", da_auth.clone()) // Clone da_auth here
+        .header("Content-Type", "application/json")
+        .header("timeout", HeaderValue::from_static("100"))
+        .body(Body::from(rpc_request.to_string()))?;
+
+    // Send the request and await the response
+    let response = client.request(request_builder).await?;
+
+    if response.status() != StatusCode::OK {
+        return Err(format!("Request failed with status code: {}", response.status()).into());
+    }
+
+    let response_body = body::to_bytes(response.into_body()).await?;
+    let parsed: Value = serde_json::from_slice(&response_body)?;
+
+    if let Some(result_value) = parsed.get("result") {
+        Ok(result_value.to_string())
+    } else {
+        Err("Result not found in response".into()) // Or create a custom error type
+    }
+}
+
+async fn retrieve_from_da(data: String) -> Result<String, Box<dyn std::error::Error>> {
+    dotenv().ok();
+    let da_host = env::var("DA_HOST")?;
+    let da_namespace = env::var("DA_NAMESPACE")?;
+    let da_auth_token = env::var("DA_AUTH_TOKEN")?;
+    let da_auth = format!("Bearer {}", da_auth_token);
+
+    let block_height: u64 = data.parse().unwrap();
+
+    let client = Client::new();
+
+    let rpc_request = json!({
+        "id": 1,
+        "jsonrpc": "2.0",
+        "method": "blob.Submit",
+        "params": [
+            block_height,
+            [
+                da_namespace
             ]
         ],
     });
@@ -276,8 +325,67 @@ mod tests {
     use super::*;
 
     #[test]
-    fn it_works() {
-        let result = 4; //= sumit_to(2, 2);
-        assert_eq!(result, 4);
+    fn clear() {
+        SYNC_DB.display_all();
+        SYNC_DB.clear();
+        println!("DB is cleared");
+        SYNC_DB.display_all();
+        SYNC_DB.write("entry_0".to_string(), "entry_0".to_string());
+        SYNC_DB.write("entry_1".to_string(), "entry_1".to_string());
+        println!("Made entries to DB");
+        SYNC_DB.display_all();
+    }
+
+    #[test]
+    fn display() {
+        SYNC_DB.display_all();
+        SYNC_DB.write("entry_0".to_string(), "entry_0".to_string());
+        SYNC_DB.write("entry_1".to_string(), "entry_1".to_string());
+        SYNC_DB.display_all();
+    }
+
+    #[test]
+    fn write_and_read() {
+        SYNC_DB.write("Hello World".to_string(), "Bye World".to_string());
+        assert_eq!(SYNC_DB.read("Hello World".to_string()), "Bye World".to_string());
+    }
+
+    #[test]
+    fn encoding() {
+        assert_eq!(encode_data_to_base64(" ".to_string()), "IA==");
+        assert_eq!(encode_data_to_base64("Bye World".to_string()), "QnllIFdvcmxk");
+    }
+
+    #[test]
+    fn submission_to_da() {
+        // Create the runtime
+        let rt = match Runtime::new() {
+            Ok(rt) => {
+                println!("Successfully created runtime");
+                rt
+            }
+            Err(err) => {
+                eprintln!("Error in creating runtime: {}", err);
+                return;
+            }
+        };
+        let data_to_store = "Bye World".to_string();
+        let encoded_data_to_store = encode_data_to_base64("Bye World".to_string());
+
+        rt.block_on(async {
+            let block_height = submit_to_da(data_to_store).await;
+            match block_height {
+                Ok(block_height) => {
+                    let retrieved_from_da = retrieve_from_da(block_height).await;
+                    match retrieved_from_da {
+                        Ok(encoded_data_from_da) => {
+                            assert_eq!(encoded_data_to_store, encoded_data_from_da);
+                        }
+                        Err(err) => eprintln!("Failed to retrieve from DA with error: {:?}", err),
+                    }
+                }
+                Err(err) => eprintln!("Failed to store to DA with error: {:?}", err),
+            }
+        });
     }
 }
