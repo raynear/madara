@@ -1,5 +1,6 @@
 use std::env;
 use std::path::Path;
+use std::time::Instant;
 
 use base64::engine::general_purpose;
 use base64::Engine as _;
@@ -203,13 +204,14 @@ async fn retrieve_from_da(data: String) -> Result<String, Box<dyn std::error::Er
     let da_auth = format!("Bearer {}", da_auth_token);
 
     let block_height: u64 = data.parse().unwrap();
+    println!("block_height is: {:}", block_height);
 
     let client = Client::new();
 
     let rpc_request = json!({
         "id": 1,
         "jsonrpc": "2.0",
-        "method": "blob.Submit",
+        "method": "blob.GetAll",
         "params": [
             block_height,
             [
@@ -312,8 +314,32 @@ pub async fn sync_with_da() {
                             block_height
                         );
                         SYNC_DB.write("sync".to_string(), next_sync);
+                        SYNC_DB.write("synced_da_block_height".to_string(), block_height);
                     }
-                    Err(err) => eprintln!("Failed to submit to DA with error: {:?}", err),
+                    Err(err) => {
+                        eprintln!("Failed to submit to DA with error: {:?}, trying to retrieve", err);
+                        let mut previous_block_height: u64 =
+                            SYNC_DB.read("synced_da_block_height".to_string()).parse().unwrap();
+                        let start_time = Instant::now();
+                        loop {
+                            previous_block_height += 1;
+                            let retrieved_from_da = retrieve_from_da(previous_block_height.to_string()).await;
+                            match retrieved_from_da {
+                                Ok(_) => {
+                                    SYNC_DB
+                                        .write("synced_da_block_height".to_string(), previous_block_height.to_string());
+                                    SYNC_DB.write("sync".to_string(), next_sync.clone());
+                                    break;
+                                }
+                                Err(err) => {
+                                    if start_time.elapsed().as_secs() > 24 * 60 * 60 {
+                                        panic!("Total time exceeded 24 hours");
+                                    };
+                                    eprintln!("Failed to retrieve: {:?}, incrementing the block_height", err);
+                                }
+                            }
+                        }
+                    }
                 }
             });
         }
