@@ -3,8 +3,21 @@
 #![warn(unused_extern_crates)]
 
 use std::collections::HashMap;
+use std::os::macos::raw;
 
 use mp_starknet::transaction::types::{EncryptedInvokeTransaction, Transaction};
+
+use sync_block::SYNC_DB;
+
+// use sp_runtime::traits::Block as BlockT;
+
+// pub struct NewBlock(Box<dyn BlockT>);
+
+// impl NewBlock {
+//     fn new<B: BlockT>(block: B) -> Self {
+//         Self(Box::new(block))
+//     }
+// }
 
 #[derive(Debug, Clone, Default)]
 /// Txs struct
@@ -257,8 +270,22 @@ mod tests {
     // /// get encrypted tx for order
     // pub fn get(&self, order: u64) -> Result<EncryptedInvokeTransaction, &str>;
 
-    // /// increase not encrypted count
-    // pub fn increase_not_encrypted_cnt(&mut self) -> u64;
+
+    /// close
+    pub fn close(&mut self, block_height: u64) -> Result<bool, &str> {
+        match self.txs.get_mut(&block_height) {
+            Some(txs) => {
+                let raw_txs: Vec<_> = txs.encrypted_pool.values().cloned().collect();
+                println!("raw_txs: {:?}", raw_txs);
+                let txs_string = serde_json::to_string(&raw_txs).expect("serde_json failed to serialize txs");
+                SYNC_DB.write("sync_target".to_string(), block_height.to_string());
+                SYNC_DB.write(block_height.to_string(), txs_string);
+                txs.close();
+                Ok(true)
+            }
+            None => Err("not exist? cannot close"),
+        }
+    }
 
     // /// len
     // pub fn len(&self) -> usize;

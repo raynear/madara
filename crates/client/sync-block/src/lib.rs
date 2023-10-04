@@ -1,6 +1,6 @@
-use std::env;
 use std::path::Path;
 use std::time::Instant;
+use std::{env, thread, time};
 
 use base64::engine::general_purpose;
 use base64::Engine as _;
@@ -204,7 +204,6 @@ async fn retrieve_from_da(data: String) -> Result<String, Box<dyn std::error::Er
     let da_auth = format!("Bearer {}", da_auth_token);
 
     let block_height: u64 = data.parse().unwrap();
-    println!("block_height is: {:}", block_height);
 
     let client = Client::new();
 
@@ -246,7 +245,7 @@ async fn retrieve_from_da(data: String) -> Result<String, Box<dyn std::error::Er
     }
 }
 
-pub async fn sync_with_da() {
+pub fn sync_with_da() {
     println!(
         "
         @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -296,7 +295,7 @@ pub async fn sync_with_da() {
     };
 
     loop {
-        sleep(Duration::from_millis(3000)).await;
+        thread::sleep(time::Duration::from_millis(3000));
         let sync = SYNC_DB.read("sync".to_string());
         let sync_target = SYNC_DB.read("sync_target".to_string());
 
