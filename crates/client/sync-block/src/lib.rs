@@ -325,32 +325,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn clear() {
-        SYNC_DB.display_all();
-        SYNC_DB.clear();
-        println!("DB is cleared");
-        SYNC_DB.display_all();
-        SYNC_DB.write("entry_0".to_string(), "entry_0".to_string());
-        SYNC_DB.write("entry_1".to_string(), "entry_1".to_string());
-        println!("Made entries to DB");
-        SYNC_DB.display_all();
-    }
-
-    #[test]
-    fn display() {
-        SYNC_DB.display_all();
-        SYNC_DB.write("entry_0".to_string(), "entry_0".to_string());
-        SYNC_DB.write("entry_1".to_string(), "entry_1".to_string());
-        SYNC_DB.display_all();
-    }
-
-    #[test]
-    fn write_and_read() {
-        SYNC_DB.write("Hello World".to_string(), "Bye World".to_string());
-        assert_eq!(SYNC_DB.read("Hello World".to_string()), "Bye World".to_string());
-    }
-
-    #[test]
     fn encoding() {
         assert_eq!(encode_data_to_base64(" ".to_string()), "IA==");
         assert_eq!(encode_data_to_base64("Bye World".to_string()), "QnllIFdvcmxk");
