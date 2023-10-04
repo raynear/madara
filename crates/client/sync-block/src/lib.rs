@@ -321,6 +321,7 @@ pub fn sync_with_da() {
                             SYNC_DB.read("synced_da_block_height".to_string()).parse().unwrap();
                         let start_time = Instant::now();
                         loop {
+                            thread::sleep(time::Duration::from_millis(1500));
                             previous_block_height += 1;
                             let retrieved_from_da = retrieve_from_da(previous_block_height.to_string()).await;
                             match retrieved_from_da {
