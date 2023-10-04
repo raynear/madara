@@ -16,7 +16,7 @@ repository = "https://github.com/keep-starknet-strange/madara"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-parking_lot = "0.12.1"
+parking_lot = { workspace = true }
 # Madara runtime
 pallet-starknet = { workspace = true, default-features = true }
 # Madara client
@@ -60,8 +60,8 @@ starknet-crypto = { workspace = true, default-features = false, features = [
   "alloc",
 ] }
 tokio = { workspace = true }
-dotenv = "0.15"
-num-bigint = { version = "0.4.3", default-features = false }
+dotenv = { workspace = true }
+num-bigint = { workspace = true, default-features = false }
 rand = "0.8"
 
 

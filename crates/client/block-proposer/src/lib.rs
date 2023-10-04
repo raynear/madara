@@ -5,22 +5,17 @@
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time;
 use std::time::{Duration, UNIX_EPOCH};
-use std::{env, time};
 
-use base64::engine::general_purpose;
-use base64::Engine as _;
 use codec::Encode;
-use dotenv::dotenv;
 use futures::channel::oneshot;
 use futures::future::{Future, FutureExt};
 use futures::{future, select};
-use hyper::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
-use hyper::{Body, Client, Request};
 use log::{debug, error, info, trace, warn};
 use mc_rpc::submit_extrinsic_with_order;
 use mc_transaction_pool::decryptor::Decryptor;
-use mc_transaction_pool::{EPool, EncryptedTransactionPool};
+use mc_transaction_pool::EncryptedTransactionPool;
 use mp_starknet::execution::types::Felt252Wrapper;
 use mp_starknet::transaction::types::{EncryptedInvokeTransaction, Transaction as MPTransaction, TxType};
 use pallet_starknet::runtime_api::{ConvertTransactionRuntimeApi, StarknetRuntimeApi};
@@ -29,7 +24,6 @@ use sc_block_builder::{BlockBuilderApi, BlockBuilderProvider};
 use sc_client_api::backend;
 use sc_proposer_metrics::{EndProposingReason, MetricsLink as PrometheusMetrics};
 use sc_transaction_pool_api::{InPoolTransaction, TransactionSource};
-use serde_json::{json, Value};
 use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_blockchain::ApplyExtrinsicFailed::Validity;
 use sp_blockchain::Error::ApplyExtrinsicFailed;
@@ -140,7 +134,7 @@ impl<A, B, C, PR> ProposerFactory<A, B, C, PR> {
 
 impl<B, Block, C, A, PR> ProposerFactory<A, B, C, PR>
 where
-    A: EncryptedTransactionPool<Block = Block> + EPool + 'static,
+    A: EncryptedTransactionPool<Block = Block> + 'static,
     B: backend::Backend<Block> + Send + Sync + 'static,
     Block: BlockT,
     C: BlockBuilderProvider<B, Block, C> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
@@ -174,7 +168,7 @@ where
 
 impl<A, B, Block, C, PR> sp_consensus::Environment<Block> for ProposerFactory<A, B, C, PR>
 where
-    A: EncryptedTransactionPool<Block = Block> + EPool + 'static,
+    A: EncryptedTransactionPool<Block = Block> + 'static,
     B: backend::Backend<Block> + Send + Sync + 'static,
     Block: BlockT,
     C: BlockBuilderProvider<B, Block, C> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
@@ -194,7 +188,7 @@ where
 }
 
 /// The proposer logic.
-pub struct Proposer<B, Block: BlockT, C, A: EncryptedTransactionPool + EPool, PR> {
+pub struct Proposer<B, Block: BlockT, C, A: EncryptedTransactionPool, PR> {
     spawn_handle: Box<dyn SpawnNamed>,
     client: Arc<C>,
     parent_hash: Block::Hash,
@@ -209,7 +203,7 @@ pub struct Proposer<B, Block: BlockT, C, A: EncryptedTransactionPool + EPool, PR
 
 impl<A, B, Block, C, PR> sp_consensus::Proposer<Block> for Proposer<B, Block, C, A, PR>
 where
-    A: EncryptedTransactionPool<Block = Block> + EPool + 'static,
+    A: EncryptedTransactionPool<Block = Block> + 'static,
     B: backend::Backend<Block> + Send + Sync + 'static,
     Block: BlockT,
     C: BlockBuilderProvider<B, Block, C> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
@@ -263,7 +257,7 @@ const MAX_SKIPPED_TRANSACTIONS: usize = 8;
 
 impl<A, B, Block, C, PR> Proposer<B, Block, C, A, PR>
 where
-    A: EncryptedTransactionPool<Block = Block> + EPool + 'static,
+    A: EncryptedTransactionPool<Block = Block> + 'static,
     B: backend::Backend<Block> + Send + Sync + 'static,
     Block: BlockT,
     C: BlockBuilderProvider<B, Block, C> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
@@ -405,7 +399,7 @@ where
         deadline: time::Instant,
         block_size_limit: Option<usize>,
     ) -> Result<EndProposingReason, sp_blockchain::Error> {
-        let epool = self.transaction_pool.epool().clone();
+        let epool = self.transaction_pool.encrypted_pool().clone();
         let block_height = self.parent_number.to_string().parse::<u64>().unwrap() + 1;
 
         let enabled = {
@@ -414,9 +408,19 @@ where
         };
 
         let closed = {
-            let lock = epool.lock().await;
+            let mut lock = epool.lock().await;
             let exist = lock.exist(block_height);
-            if exist { lock.is_closed(block_height).unwrap() } else { false }
+            if exist {
+                // lock.get_txs(block_height).unwrap().is_closed()
+                lock.txs.get_mut(&block_height).unwrap().is_closed()
+            } else {
+                lock.initialize_if_not_exist(block_height);
+                println!("log1");
+                let len = lock.txs.get(&block_height).unwrap().len();
+                // let len = lock.get_txs(block_height).unwrap().len();
+                println!("{}", len);
+                false
+            }
         };
 
         if enabled && !closed {
@@ -424,14 +428,17 @@ where
             let mut temporary_pool: Vec<(u64, MPTransaction)> = vec![];
             {
                 let mut lock = epool.lock().await;
-                if lock.exist(block_height) {
-                    println!("close on {}", block_height);
-                    let _ = lock.close(block_height);
+                println!("close on {}", block_height);
+                let txs = lock.txs.get_mut(&block_height).unwrap();
+                // let mut txs = lock.get_txs(block_height).unwrap();
 
-                    let txs = lock.get_txs(block_height).unwrap();
+                let tx_cnt = txs.get_tx_cnt();
+                let dec_cnt = txs.get_decrypted_cnt();
+                println!("test1: {}:{}", tx_cnt, dec_cnt);
 
-                    temporary_pool = txs.get_temporary_pool();
-                }
+                let _ = txs.close();
+
+                temporary_pool = txs.get_temporary_pool();
             }
 
             let best_block_hash = self.client.info().best_hash;
@@ -457,7 +464,8 @@ where
             let cnt = {
                 let lock = epool.lock().await;
 
-                lock.len(block_height) as u64
+                lock.txs.get(&block_height).unwrap().len() as u64
+                // lock.get_txs(block_height).unwrap().len() as u64
             };
 
             let start = std::time::SystemTime::now();
@@ -470,7 +478,7 @@ where
                 let client = self.client.clone();
                 let pool = self.transaction_pool.clone();
                 let chain_id = Felt252Wrapper(client.runtime_api().chain_id(best_block_hash).unwrap().into());
-                let epool = self.transaction_pool.epool().clone();
+                let epool = self.transaction_pool.encrypted_pool().clone();
                 self.spawn_handle.spawn_blocking(
                     "Decryptor",
                     None,
@@ -484,15 +492,17 @@ where
                             let encrypted_invoke_transaction: EncryptedInvokeTransaction;
                             {
                                 let lock = epool.lock().await;
+                                let txs = lock.txs.get(&block_height).expect("expect get txs");
+                                // let txs = lock.get_txs(block_height).unwrap();
                                 // println!("check key_received on block_height {} order {}", block_height, order);
-                                let did_received_key = lock.get_key_received(block_height, order);
+                                let did_received_key = txs.get_key_received(order);
 
                                 if did_received_key == true {
                                     println!("Received key");
                                     return;
                                 }
                                 println!("Not received key");
-                                encrypted_invoke_transaction = lock.get(block_height, order).unwrap().clone();
+                                encrypted_invoke_transaction = txs.get(order).unwrap().clone();
                             }
 
                             let decryptor = Decryptor::new();
@@ -504,51 +514,17 @@ where
                             {
                                 let mut lock = epool.lock().await;
                                 // println!("check key_received on block_height {} order {}", block_height, order);
-                                let did_received_key = lock.get_key_received(block_height, order);
+                                let did_received_key = lock.txs.get(&block_height).unwrap().get_key_received(order);
+                                // let did_received_key = lock.get_txs(block_height).unwrap().get_key_received(order);
 
                                 if did_received_key == true {
                                     println!("Received key");
                                     return;
                                 }
 
-                                lock.increase_decrypted_cnt(block_height);
-
-                                let previous_closed = match lock.is_closed(block_height - 1) {
-                                    Ok(closed) => {
-                                        if closed {
-                                            println!("{} is closed", block_height - 1);
-                                        } else {
-                                            println!("{} is not closed", block_height - 1);
-                                        };
-                                        closed
-                                    }
-                                    Err(_e) => {
-                                        println!("no state for {}", block_height - 1);
-                                        false
-                                    }
-                                };
-
-                                if previous_closed {
-                                    let mut txs = match lock.get_txs(block_height) {
-                                        Ok(txs) => txs.clone(),
-                                        Err(_e) => panic!("no case of this"),
-                                    };
-
-                                    // let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
-                                    // let extrinsic = convert_transaction(client, best_block_hash,
-                                    // transaction.clone(), TxType::Invoke)
-                                    // .await     .expect("Failed to submit
-                                    // extrinsic");
-
-                                    let transaction: MPTransaction = invoke_tx.from_invoke(chain_id);
-                                    println!(
-                                        "{} is closed.. push on temporary pool of {}",
-                                        block_height - 1,
-                                        block_height
-                                    );
-                                    txs.add_tx_to_temporary_pool(order, transaction);
-                                    return;
-                                }
+                                lock.txs.get_mut(&block_height).unwrap().increase_decrypted_cnt();
+                                // lock.get_txs(block_height).unwrap().clone().
+                                // increase_decrypted_cnt();
                             }
 
                             let end = std::time::SystemTime::now();
@@ -575,8 +551,10 @@ where
             {
                 let lock = epool.lock().await;
                 if lock.exist(block_height) {
-                    let tx_cnt = lock.get_tx_cnt(block_height);
-                    let dec_cnt = lock.get_decrypted_cnt(block_height);
+                    let txs = lock.txs.get(&block_height).expect("expect get txs");
+                    // let txs = lock.get_txs(block_height).unwrap();
+                    let tx_cnt = txs.get_tx_cnt();
+                    let dec_cnt = txs.get_decrypted_cnt();
                     let ready_cnt = self.transaction_pool.status().ready as u64;
                     println!("{} waiting {}:{}:{}", block_height, tx_cnt, dec_cnt, ready_cnt);
                     if !(tx_cnt == dec_cnt && dec_cnt == ready_cnt) {
@@ -616,26 +594,26 @@ where
         debug!(target: LOG_TARGET, "Pool status: {:?}", self.transaction_pool.status());
         let mut transaction_pushed = false;
 
-        {
-            let mut lock = epool.lock().await;
-            if lock.is_enabled() {
-                let block_height = self.parent_number.to_string().parse::<u64>().unwrap() + 1;
-/*                 let encrypted_tx_pool_size: usize = lock.len(block_height);
+        // {
+        //     let lock = epool.lock().await;
+        //     if lock.is_enabled() {
+        //         let block_height = self.parent_number.to_string().parse::<u64>().unwrap() + 1;
+        //          let encrypted_tx_pool_size: usize = lock.len(block_height);
 
-                if encrypted_tx_pool_size > 0 {
-                    let encrypted_invoke_transactions = lock.get_encrypted_tx_pool(block_height);
+        //         if encrypted_tx_pool_size > 0 {
+        //             let encrypted_invoke_transactions = lock.get_encrypted_tx_pool(block_height);
 
-                    let data_for_da: String = serde_json::to_string(&encrypted_invoke_transactions).unwrap();
-                    // println!("this is the : {:?}", data_for_da);
-                    let encoded_data_for_da = encode_data_to_base64(&data_for_da);
-                    // println!("this is the encoded_data_for_da: {:?}", encoded_data_for_da);
-                    submit_to_da(&encoded_data_for_da);
-                    // let da_block_height = submit_to_da(&encoded_data_for_da).await;
-                    // println!("this is the block_height: {}", da_block_height);
-                } */
-                lock.init_tx_pool(block_height);
-            }
-        }
+        //             let data_for_da: String =
+        // serde_json::to_string(&encrypted_invoke_transactions).unwrap();             //
+        // println!("this is the : {:?}", data_for_da);             let encoded_data_for_da =
+        // encode_data_to_base64(&data_for_da);             // println!("this is the
+        // encoded_data_for_da: {:?}", encoded_data_for_da);
+        // submit_to_da(&encoded_data_for_da);             // let da_block_height =
+        // submit_to_da(&encoded_data_for_da).await;             // println!("this is the
+        // block_height: {}", da_block_height);         }
+        //         // lock.init_tx_pool(block_height);
+        //     }
+        // }
 
         // input pool data to DA
         let end_reason = loop {
@@ -1223,56 +1201,56 @@ mod tests {
     }
 }
 
-/* async fn submit_to_da(data: &str) -> String {
-    dotenv().ok();
-    let da_host = env::var("DA_HOST").expect("DA_HOST must be set");
-    let da_namespace = env::var("DA_NAMESPACE").expect("DA_NAMESPACE must be set");
-    let da_auth_token = env::var("DA_AUTH_TOKEN").expect("DA_AUTH_TOKEN must be set");
-    let da_auth = format!("Bearer {}", da_auth_token);
-
-    // println!("this is the da_namespace: {:?}", da_namespace);
-
-    let client = Client::new();
-    let rpc_request = json!({
-        "jsonrpc": "2.0",
-        "method": "blob.Submit",
-        "params": [
-            [
-                {
-                    "namespace": da_namespace,
-                    "data": data,
-                }
-            ]
-        ],
-        "id": 1,
-    });
-
-    let uri = std::env::var("da_uri").unwrap_or(da_host.into());
-
-    // Token should be removed from code.
-    let req = Request::post(uri.as_str())
-        .header(AUTHORIZATION, HeaderValue::from_str(da_auth.as_str()).unwrap())
-        .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
-        .body(Body::from(rpc_request.to_string()))
-        .unwrap();
-    let response_future = client.request(req);
-
-    let resp = tokio::time::timeout(Duration::from_secs(100), response_future)
-        .await
-        .map_err(|_| "Request timed out")
-        .unwrap()
-        .unwrap();
-
-    let response_body = hyper::body::to_bytes(resp.into_body()).await.unwrap();
-    let parsed: Value = serde_json::from_slice(&response_body).unwrap();
-
-    if let Some(result_value) = parsed.get("result") { result_value.to_string() } else { "".to_string() }
-}
-
-fn encode_data_to_base64(original: &str) -> String {
-    // Convert string to bytes
-    let bytes = original.as_bytes();
-    // Convert bytes to base64
-    let base64_str: String = general_purpose::STANDARD.encode(&bytes);
-    base64_str
-} */
+// async fn submit_to_da(data: &str) -> String {
+// dotenv().ok();
+// let da_host = env::var("DA_HOST").expect("DA_HOST must be set");
+// let da_namespace = env::var("DA_NAMESPACE").expect("DA_NAMESPACE must be set");
+// let da_auth_token = env::var("DA_AUTH_TOKEN").expect("DA_AUTH_TOKEN must be set");
+// let da_auth = format!("Bearer {}", da_auth_token);
+//
+// println!("this is the da_namespace: {:?}", da_namespace);
+//
+// let client = Client::new();
+// let rpc_request = json!({
+// "jsonrpc": "2.0",
+// "method": "blob.Submit",
+// "params": [
+// [
+// {
+// "namespace": da_namespace,
+// "data": data,
+// }
+// ]
+// ],
+// "id": 1,
+// });
+//
+// let uri = std::env::var("da_uri").unwrap_or(da_host.into());
+//
+// Token should be removed from code.
+// let req = Request::post(uri.as_str())
+// .header(AUTHORIZATION, HeaderValue::from_str(da_auth.as_str()).unwrap())
+// .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
+// .body(Body::from(rpc_request.to_string()))
+// .unwrap();
+// let response_future = client.request(req);
+//
+// let resp = tokio::time::timeout(Duration::from_secs(100), response_future)
+// .await
+// .map_err(|_| "Request timed out")
+// .unwrap()
+// .unwrap();
+//
+// let response_body = hyper::body::to_bytes(resp.into_body()).await.unwrap();
+// let parsed: Value = serde_json::from_slice(&response_body).unwrap();
+//
+// if let Some(result_value) = parsed.get("result") { result_value.to_string() } else {
+// "".to_string() } }
+//
+// fn encode_data_to_base64(original: &str) -> String {
+// Convert string to bytes
+// let bytes = original.as_bytes();
+// Convert bytes to base64
+// let base64_str: String = general_purpose::STANDARD.encode(&bytes);
+// base64_str
+// }

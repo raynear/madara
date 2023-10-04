@@ -26,7 +26,7 @@ use mc_rpc_core::Felt;
 pub use mc_rpc_core::StarknetRpcApiServer;
 use mc_storage::OverrideHandle;
 use mc_transaction_pool::decryptor::Decryptor;
-use mc_transaction_pool::{ChainApi, EPool, EncryptedTransactionPool, Pool};
+use mc_transaction_pool::{ChainApi, EncryptedTransactionPool, Pool, Txs};
 use mp_starknet::crypto::merkle_patricia_tree::merkle_tree::ProofNode;
 use mp_starknet::execution::types::Felt252Wrapper;
 use mp_starknet::traits::hash::HasherT;
@@ -184,7 +184,7 @@ impl<A, B, BE, C, P, H> StarknetRpcApiServer for Starknet<A, B, BE, C, P, H>
 where
     A: ChainApi<Block = B> + 'static,
     B: BlockT,
-    P: EncryptedTransactionPool<Block = B> + EPool + 'static,
+    P: EncryptedTransactionPool<Block = B> + 'static,
     BE: Backend<B> + 'static,
     C: HeaderBackend<B> + StorageProvider<B, BE> + 'static,
     C: ProvideRuntimeApi<B>,
@@ -484,18 +484,27 @@ where
         let extrinsic =
             convert_transaction(self.client.clone(), best_block_hash, transaction.clone(), TxType::Invoke).await?;
 
-        let block_number = self.current_block_number().unwrap() + 1;
-        let epool = self.pool.epool().clone();
+        let block_height = self.current_block_number().unwrap() + 1;
+        let epool = self.pool.encrypted_pool().clone();
 
-        let order;
         {
             let mut lock = epool.lock().await;
-            lock.initialize_if_not_exist(block_number);
-            order = lock.get_order(block_number);
-            lock.increase_not_encrypted_cnt(block_number).unwrap();
-        }
+            lock.initialize_if_not_exist(block_height);
+            let txs = lock.txs.get_mut(&block_height).unwrap();
+            if txs.is_closed() {
+                let big_block_height = block_height + 1;
+                lock.initialize_if_not_exist(big_block_height);
+                let next_txs = lock.txs.get_mut(&big_block_height).unwrap();
 
-        submit_extrinsic_with_order(self.pool.clone(), best_block_hash, extrinsic, order).await?;
+                println!("{} is closed.. push on temporary pool of {}", block_height - 1, block_height);
+                let order = next_txs.get_order();
+                next_txs.add_tx_to_temporary_pool(order, transaction.clone());
+            } else {
+                txs.increase_not_encrypted_cnt();
+                let order = txs.get_order();
+                submit_extrinsic_with_order(self.pool.clone(), best_block_hash, extrinsic, order).await?;
+            }
+        };
 
         Ok(InvokeTransactionResult { transaction_hash: transaction.hash.into() })
     }
@@ -514,11 +523,16 @@ where
         &self,
         deploy_account_transaction: BroadcastedDeployAccountTransaction,
     ) -> RpcResult<DeployAccountTransactionResult> {
-        let epool = self.pool.epool().clone();
+        let epool = self.pool.encrypted_pool().clone();
         let block_height = self.current_block_number().unwrap();
 
-        if epool.clone().lock().await.is_enabled() {
-            epool.clone().lock().await.increase_order(block_height);
+        {
+            let mut lock = epool.lock().await;
+            if lock.is_enabled() {
+                lock.initialize_if_not_exist(block_height);
+                let txs = lock.txs.get_mut(&block_height).unwrap();
+                txs.increase_order();
+            }
         }
 
         let best_block_hash = self.client.info().best_hash;
@@ -539,15 +553,16 @@ where
             convert_transaction(self.client.clone(), best_block_hash, transaction.clone(), TxType::DeployAccount)
                 .await?;
 
-        let block_number = self.current_block_number().unwrap() + 1;
-        let epool = self.pool.epool().clone();
+        let block_height = self.current_block_number().unwrap() + 1;
+        let epool = self.pool.encrypted_pool().clone();
 
         let order;
         {
             let mut lock = epool.lock().await;
-            lock.initialize_if_not_exist(block_number);
-            order = lock.get_order(block_number);
-            let _ = lock.increase_not_encrypted_cnt(block_number);
+            lock.initialize_if_not_exist(block_height);
+            let txs = lock.txs.get_mut(&block_height).unwrap();
+            order = txs.get_order();
+            let _ = txs.increase_not_encrypted_cnt();
         }
 
         submit_extrinsic_with_order(self.pool.clone(), best_block_hash, extrinsic, order).await?;
@@ -795,11 +810,16 @@ where
         &self,
         declare_transaction: BroadcastedDeclareTransaction,
     ) -> RpcResult<DeclareTransactionResult> {
-        let epool = self.pool.epool().clone();
+        let epool = self.pool.encrypted_pool().clone();
         let block_height = self.current_block_number().unwrap();
 
-        if epool.clone().lock().await.is_enabled() {
-            epool.clone().lock().await.increase_order(block_height);
+        {
+            let mut lock = epool.lock().await;
+            if lock.is_enabled() {
+                lock.initialize_if_not_exist(block_height);
+                let txs = lock.txs.get_mut(&block_height).unwrap();
+                txs.increase_order();
+            }
         }
 
         let best_block_hash = self.client.info().best_hash;
@@ -825,15 +845,16 @@ where
         let extrinsic =
             convert_transaction(self.client.clone(), best_block_hash, transaction.clone(), TxType::Declare).await?;
 
-        let block_number = self.current_block_number().unwrap() + 1;
-        let epool = self.pool.epool().clone();
+        let block_height = block_height + 1;
+        let epool = self.pool.encrypted_pool().clone();
 
         let order;
         {
             let mut lock = epool.lock().await;
-            lock.initialize_if_not_exist(block_number);
-            order = lock.get_order(block_number);
-            let _ = lock.increase_not_encrypted_cnt(block_number);
+            lock.initialize_if_not_exist(block_height);
+            let txs = lock.txs.get_mut(&block_height).unwrap();
+            order = txs.get_order();
+            let _ = txs.increase_not_encrypted_cnt();
         }
 
         submit_extrinsic_with_order(self.pool.clone(), best_block_hash, extrinsic, order).await?;
@@ -1112,31 +1133,63 @@ where
         &self,
         encrypted_invoke_transaction: EncryptedInvokeTransaction,
     ) -> RpcResult<EncryptedMempoolTransactionResult> {
-        let mut block_number = self.current_block_number().unwrap() + 1;
+        let mut block_height = self.current_block_number().unwrap() + 1;
 
-        let epool = self.pool.epool().clone();
+        let epool = self.pool.encrypted_pool();
 
-        {
-            let lock = epool.lock().await;
+        let order = {
+            let mut lock = epool.lock().await;
 
             if !lock.is_enabled() {
                 return Err(StarknetRpcApiError::EncryptedMempoolDisabled.into());
             }
 
-            if lock.exist(block_number) {
-                let closed = lock.is_closed(block_number).unwrap();
-                println!("{} : closed? {}", block_number, closed);
-
-                if closed {
-                    block_number += 1;
-                    println!("closed!, push at {}", block_number);
-                } else {
-                    println!("still open");
+            match lock.txs.get_mut(&block_height) {
+                Some(_) => {
+                    println!("txs exist {}", block_height);
+                }
+                None => {
+                    println!("txs not exist create new one for {}", block_height);
+                    lock.txs.insert(block_height, Txs::new());
                 }
             }
-        }
+            // lock.initialize_if_not_exist(block_height);
+            let txs = lock.txs.get(&block_height).expect("expect get txs");
+            // let txs = lock.txs.get(&block_height).unwrap();
 
-        let order = epool.clone().lock().await.set(block_number, encrypted_invoke_transaction.clone());
+            let closed = txs.is_closed();
+            println!("{} : closed? {}", block_height, closed);
+
+            if closed {
+                block_height += 1;
+                println!("closed!, push at {}", block_height);
+            } else {
+                println!("still open");
+            }
+            // lock.initialize_if_not_exist(block_height);
+            match lock.txs.get(&block_height) {
+                Some(_) => {
+                    println!("txs exist {}", block_height);
+                }
+                None => {
+                    println!("txs not exist create new one for {}", block_height);
+                    lock.txs.insert(block_height, Txs::new());
+                }
+            }
+
+            let txs = lock.txs.get_mut(&block_height).unwrap();
+
+            txs.set(encrypted_invoke_transaction.clone());
+
+            let tx_cnt = txs.len();
+            println!("1. added length {} {}", tx_cnt, txs.get_order());
+            txs.get_order()
+        };
+
+        {
+            let tx_cnt = epool.lock().await.txs.get(&block_height).expect("expect get txs2").len();
+            println!("2. added length {}", tx_cnt);
+        }
 
         let chain_id = Felt252Wrapper(self.chain_id()?.0);
 
@@ -1163,7 +1216,7 @@ where
         let encrypted_invoke_transaction_bytes = encrypted_invoke_transaction_string.as_bytes();
         let encrypted_tx_info_hash = self.hasher.hash_bytes(encrypted_invoke_transaction_bytes);
 
-        let message = format!("{},{},{}", block_number, order, encrypted_tx_info_hash.0.to_string());
+        let message = format!("{},{},{}", block_height, order, encrypted_tx_info_hash.0.to_string());
         let message = message.as_bytes();
         let commitment = self.hasher.hash_bytes(message);
 
@@ -1172,7 +1225,7 @@ where
                 .unwrap();
 
         Ok(EncryptedMempoolTransactionResult {
-            block_number,
+            block_number: block_height,
             order,
             signature: bounded_vec!(signature.r.into(), signature.s.into(), signature.v.into()),
         })
@@ -1204,7 +1257,7 @@ where
 
         let sequencer_public_key = get_public_key(&sequencer_private_key);
 
-        let epool = self.pool.epool().clone();
+        let epool = self.pool.encrypted_pool().clone();
         let block_height = decryption_info.block_number;
         let encrypted_invoke_transaction: EncryptedInvokeTransaction;
         if !epool.lock().await.is_enabled() {
@@ -1213,8 +1266,9 @@ where
 
         {
             let mut lock = epool.lock().await;
+            lock.initialize_if_not_exist(block_height);
 
-            encrypted_invoke_transaction = match lock.get(block_height, decryption_info.order) {
+            encrypted_invoke_transaction = match lock.txs.get(&block_height).unwrap().get(decryption_info.order) {
                 Ok(encrypted_invoke_transaction) => encrypted_invoke_transaction.clone(),
                 Err(e) => {
                     error!(
@@ -1226,7 +1280,7 @@ where
                 }
             };
 
-            lock.update_key_received(block_height, decryption_info.order);
+            lock.txs.get_mut(&block_height).unwrap().clone().update_key_received(decryption_info.order);
         }
 
         let encrypted_invoke_transaction_string = serde_json::to_string(&encrypted_invoke_transaction)?;
@@ -1266,8 +1320,8 @@ where
             .decrypt_encrypted_invoke_transaction(encrypted_invoke_transaction, Some(decryption_info.decryption_key))
             .await;
         {
-            // let mut lock = epool.lock();
-            epool.clone().lock().await.increase_decrypted_cnt(block_height);
+            // let lock = epool.lock();
+            epool.clone().lock().await.get_txs(block_height).unwrap().clone().increase_decrypted_cnt();
         }
 
         let chain_id = Felt252Wrapper(self.chain_id()?.0);

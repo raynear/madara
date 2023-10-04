@@ -41,8 +41,9 @@ use futures::channel::oneshot;
 use futures::future::{self, ready};
 use futures::prelude::*;
 pub use graph::base_pool::Limit as PoolLimit;
-pub use graph::{ChainApi, EncryptedPool, Options, Pool, Transaction, ValidatedTransaction};
-use graph::{ExtrinsicHash, IsValidator};
+pub use graph::{
+    ChainApi, EncryptedPool, ExtrinsicHash, IsValidator, Options, Pool, Transaction, Txs, ValidatedTransaction,
+};
 use parking_lot::Mutex;
 use prometheus_endpoint::Registry as PrometheusRegistry;
 use sc_transaction_pool_api::error::Error as TxPoolError;
@@ -78,7 +79,6 @@ where
     PoolApi: graph::ChainApi<Block = Block>,
 {
     pool: Arc<graph::Pool<PoolApi>>,
-    epool: Arc<TokioMutex<EncryptedPool>>,
     api: Arc<PoolApi>,
     revalidation_strategy: Arc<Mutex<RevalidationStrategy<NumberFor<Block>>>>,
     revalidation_queue: Arc<revalidation::RevalidationQueue<PoolApi>>,
@@ -158,15 +158,13 @@ where
         finalized_hash: Block::Hash,
         encrypted_mempool: bool,
     ) -> (Self, Pin<Box<dyn Future<Output = ()> + Send>>) {
-        let pool = Arc::new(graph::Pool::new(Default::default(), true.into(), pool_api.clone()));
-        let epool = Arc::new(TokioMutex::new(EncryptedPool::new(encrypted_mempool)));
+        let pool = Arc::new(graph::Pool::new(Default::default(), true.into(), pool_api.clone(), encrypted_mempool));
         let (revalidation_queue, background_task) =
             revalidation::RevalidationQueue::new_background(pool_api.clone(), pool.clone());
         (
             Self {
                 api: pool_api,
                 pool,
-                epool,
                 revalidation_queue: Arc::new(revalidation_queue),
                 revalidation_strategy: Arc::new(Mutex::new(RevalidationStrategy::Always)),
                 ready_poll: Default::default(),
@@ -192,8 +190,7 @@ where
         finalized_hash: Block::Hash,
         encrypted_mempool: bool,
     ) -> Self {
-        let pool = Arc::new(graph::Pool::new(options, is_validator, pool_api.clone()));
-        let epool = Arc::new(TokioMutex::new(EncryptedPool::new(encrypted_mempool)));
+        let pool = Arc::new(graph::Pool::new(options, is_validator, pool_api.clone(), encrypted_mempool));
 
         let (revalidation_queue, background_task) = match revalidation_type {
             RevalidationType::Light => (revalidation::RevalidationQueue::new(pool_api.clone(), pool.clone()), None),
@@ -211,7 +208,6 @@ where
         Self {
             api: pool_api,
             pool,
-            epool,
             revalidation_queue: Arc::new(revalidation_queue),
             revalidation_strategy: Arc::new(Mutex::new(match revalidation_type {
                 RevalidationType::Light => RevalidationStrategy::Light(RevalidationStatus::NotScheduled),
@@ -228,30 +224,9 @@ where
         &self.pool
     }
 
-    /// Gets shared reference to the underlying pool.
-    pub fn epool(&self) -> &Arc<TokioMutex<EncryptedPool>> {
-        &self.epool
-    }
-
     /// Get access to the underlying api
     pub fn api(&self) -> &PoolApi {
         &self.api
-    }
-}
-
-/// trait for get epool
-pub trait EPool {
-    /// get epool
-    fn epool(&self) -> Arc<TokioMutex<EncryptedPool>>;
-}
-
-impl<PoolApi, Block> EPool for BasicPool<PoolApi, Block>
-where
-    Block: BlockT,
-    PoolApi: graph::ChainApi<Block = Block> + 'static,
-{
-    fn epool(&self) -> Arc<TokioMutex<EncryptedPool>> {
-        self.epool().clone()
     }
 }
 
@@ -274,6 +249,9 @@ pub trait EncryptedTransactionPool: TransactionPool {
         xts: Vec<TransactionFor<Self>>,
         order: Option<u64>,
     ) -> PoolFuture<Vec<Result<TxHash<Self>, Self::Error>>, Self::Error>;
+
+    /// encrypted_pool
+    fn encrypted_pool(&self) -> Arc<TokioMutex<EncryptedPool>>;
 }
 impl<PoolApi, Block> EncryptedTransactionPool for BasicPool<PoolApi, Block>
 where
@@ -308,6 +286,10 @@ where
         self.metrics.report(|metrics| metrics.submitted_transactions.inc_by(xts.len() as u64));
 
         async move { pool.submit_at(&at, source, xts, order).await }.boxed()
+    }
+
+    fn encrypted_pool(&self) -> Arc<TokioMutex<EncryptedPool>> {
+        self.pool().encrypted_pool()
     }
 }
 

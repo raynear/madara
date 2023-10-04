@@ -11,12 +11,6 @@ mod genesis_block;
 mod rpc;
 mod starknet;
 
-use std::thread;
-use sync_block;
-
 fn main() -> sc_cli::Result<()> {
-    thread::spawn(move || {
-        sync_block::sync_with_da();
-    });
     command::run()
 }
