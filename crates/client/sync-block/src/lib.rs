@@ -232,17 +232,17 @@ pub async fn sync_with_da() {
     "
     );
 
-    // Create the runtime
-    let rt = match Runtime::new() {
-        Ok(rt) => {
-            println!("Successfully created runtime");
-            rt
-        }
-        Err(err) => {
-            eprintln!("Error in creating runtime: {}", err);
-            return;
-        }
-    };
+    // // Create the runtime
+    // let rt = match Runtime::new() {
+    //     Ok(rt) => {
+    //         println!("Successfully created runtime");
+    //         rt
+    //     }
+    //     Err(err) => {
+    //         eprintln!("Error in creating runtime: {}", err);
+    //         return;
+    //     }
+    // };
 
     loop {
         sleep(Duration::from_millis(3000)).await;
@@ -253,20 +253,20 @@ pub async fn sync_with_da() {
         if sync_target != sync {
             SYNC_DB.display_all();
             let (next_sync, next_txs) = SYNC_DB.get_next_entry(sync);
-            rt.block_on(async {
-                let block_height = submit_to_da(next_txs).await;
-                match block_height {
-                    Ok(block_height) => {
-                        println!(
-                            "<------------------------------------DA BLOCK \
-                             HEIGHT------------------------------------------>: {}",
-                            block_height
-                        );
-                        SYNC_DB.write("sync".to_string(), next_sync);
-                    }
-                    Err(err) => eprintln!("Failed to submit to DA with error: {:?}", err),
+            // rt.block_on(async {
+            let block_height = submit_to_da(next_txs).await;
+            match block_height {
+                Ok(block_height) => {
+                    println!(
+                        "<------------------------------------DA BLOCK \
+                         HEIGHT------------------------------------------>: {}",
+                        block_height
+                    );
+                    SYNC_DB.write("sync".to_string(), next_sync);
                 }
-            });
+                Err(err) => eprintln!("Failed to submit to DA with error: {:?}", err),
+            }
+            // });
         }
     }
 }

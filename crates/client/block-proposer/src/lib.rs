@@ -436,9 +436,13 @@ where
                 let dec_cnt = txs.get_decrypted_cnt();
                 println!("test1: {}:{}", tx_cnt, dec_cnt);
 
-                let _ = txs.close();
-
                 temporary_pool = txs.get_temporary_pool();
+            }
+
+            {
+                let mut lock = epool.lock().await;
+
+                let _ = lock.close(block_height);
             }
 
             let best_block_hash = self.client.info().best_hash;
