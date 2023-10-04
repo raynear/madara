@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 
+use mc_sync_block::SYNC_DB;
 use mp_starknet::transaction::types::{EncryptedInvokeTransaction, Transaction};
 
 #[derive(Debug, Clone, Default)]
@@ -214,6 +215,22 @@ impl EncryptedPool {
         match self.txs.get(&block_height) {
             Some(txs) => Ok(txs.clone()),
             None => Err("get not exist tx from map"),
+        }
+    }
+
+    /// close
+    pub fn close(&mut self, block_height: u64) -> Result<bool, &str> {
+        match self.txs.get_mut(&block_height) {
+            Some(txs) => {
+                let raw_txs: Vec<_> = txs.encrypted_pool.values().cloned().collect();
+                println!("raw_txs: {:?}", raw_txs);
+                let txs_string = serde_json::to_string(&raw_txs).expect("serde_json failed to serialize txs");
+                SYNC_DB.write("sync_target".to_string(), block_height.to_string());
+                SYNC_DB.write(block_height.to_string(), txs_string);
+                txs.close();
+                Ok(true)
+            }
+            None => Err("not exist? cannot close"),
         }
     }
 
