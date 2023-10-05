@@ -282,6 +282,7 @@ pub async fn sync_with_da() {
     );
     let mut da_failed = false;
     let mut start_time = Instant::now();
+    let mut previous_block_height: u64 = 0;
     loop {
         sleep(Duration::from_millis(3000)).await;
         let sync = SYNC_DB.read("sync".to_string());
@@ -307,11 +308,10 @@ pub async fn sync_with_da() {
                         da_failed = true;
                         start_time = Instant::now();
                         eprintln!("Failed to submit to DA with error: {:?}, trying to retrieve", err);
+                        previous_block_height = SYNC_DB.read("synced_da_block_height".to_string()).parse().unwrap();
                     }
                 }
             } else {
-                let mut previous_block_height: u64 =
-                    SYNC_DB.read("synced_da_block_height".to_string()).parse().unwrap();
                 previous_block_height += 1;
                 let retrieved_from_da = retrieve_from_da(previous_block_height.to_string()).await;
                 match retrieved_from_da {
