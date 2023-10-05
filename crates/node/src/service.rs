@@ -150,6 +150,7 @@ where
         task_manager.spawn_essential_handle(),
         client.clone(),
         cli.run.encrypted_mempool,
+        cli.run.using_external_decryptor,
     );
 
     let (grandpa_block_import, grandpa_link) = sc_consensus_grandpa::block_import(

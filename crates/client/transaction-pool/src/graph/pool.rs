@@ -115,6 +115,8 @@ pub struct Options {
     pub ban_time: Duration,
     /// Encrypted Mempool
     pub encrypted_mempool: bool,
+    /// Using external decryptor in Encrypted Mempool
+    pub using_external_decryptor: bool,
 }
 
 impl Default for Options {
@@ -125,6 +127,7 @@ impl Default for Options {
             reject_future_transactions: false,
             ban_time: Duration::from_secs(60 * 30),
             encrypted_mempool: false,
+            using_external_decryptor: false,
         }
     }
 }
@@ -140,6 +143,7 @@ impl From<ScOptions> for Options {
             reject_future_transactions: opts.reject_future_transactions,
             ban_time: opts.ban_time,
             encrypted_mempool: false,
+            using_external_decryptor: false,
         }
     }
 }
@@ -167,10 +171,16 @@ pub struct Pool<B: ChainApi> {
 
 impl<B: ChainApi> Pool<B> {
     /// Create a new transaction pool.
-    pub fn new(options: Options, is_validator: IsValidator, api: Arc<B>, encrypted_mempool: bool) -> Self {
+    pub fn new(
+        options: Options,
+        is_validator: IsValidator,
+        api: Arc<B>,
+        encrypted_mempool: bool,
+        using_external_decryptor: bool,
+    ) -> Self {
         Self {
             validated_pool: Arc::new(ValidatedPool::new(options, is_validator, api)),
-            encrypted_pool: Arc::new(Mutex::new(EncryptedPool::new(encrypted_mempool))),
+            encrypted_pool: Arc::new(Mutex::new(EncryptedPool::new(encrypted_mempool, using_external_decryptor))),
         }
     }
 

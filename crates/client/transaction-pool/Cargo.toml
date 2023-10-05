@@ -47,3 +47,4 @@ tokio = { workspace = true }
 
 mc-sync-block = { workspace = true }
 bincode = { workspace = true }
+jsonrpsee = { version = "0.20", features = ["server", "http-client", "ws-client", "macros", "client-ws-transport-native-tls"] }

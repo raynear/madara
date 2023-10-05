@@ -1,9 +1,13 @@
 // This file is part of Encrypted mempool.
 
 use encryptor::SequencerPoseidonEncryption;
+use jsonrpsee::core::client::ClientT;
+use jsonrpsee::core::params::ObjectParams;
+use jsonrpsee::rpc_params;
+use jsonrpsee::ws_client::WsClientBuilder;
 use mp_starknet::transaction::types::{EncryptedInvokeTransaction, InvokeTransaction};
+use serde_json::json;
 use vdf::VDF;
-
 /// Decryptor has delay function for calculate decryption key and
 /// decrypt function for decryption with poseidon algorithm
 pub struct Decryptor {
@@ -32,6 +36,7 @@ impl Decryptor {
         encrypted_invoke_transaction: EncryptedInvokeTransaction,
         decryption_key: Option<String>,
     ) -> InvokeTransaction {
+        println!("Decrypting encrypted invoke transaction... using internal decryptor");
         let symmetric_key = decryption_key.unwrap_or_else(|| {
             // 2. Use naive
             self.delay_function.evaluate(
@@ -52,5 +57,30 @@ impl Decryptor {
         let decrypted_invoke_tx = decrypted_invoke_tx.trim_end_matches('\0');
 
         serde_json::from_str(&decrypted_invoke_tx).unwrap()
+    }
+
+    /// Delegate to decrypt encrypted invoke transaction
+    pub async fn delegate_to_decrypt_encrypted_invoke_transaction(
+        &self,
+        encrypted_invoke_transaction: EncryptedInvokeTransaction,
+        decryption_key: Option<String>,
+    ) -> InvokeTransaction {
+        println!("Decrypting encrypted invoke transaction... using external decryptor");
+
+        let url = format!("ws://localhost:8080");
+        let client = WsClientBuilder::default().build(&url).await.unwrap();
+
+        let encrypted_invoke_transaction_json = json!(encrypted_invoke_transaction);
+
+        let mut params = ObjectParams::new();
+        if let Some(obj) = encrypted_invoke_transaction_json.as_object() {
+            for (key, value) in obj {
+                let _ = params.insert(key, value);
+            }
+        }
+
+        let response: String = client.request("decrypt_transaction", params).await.unwrap();
+
+        serde_json::from_str(response.as_str()).unwrap()
     }
 }

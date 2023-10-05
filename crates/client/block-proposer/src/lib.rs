@@ -17,7 +17,7 @@ use mc_rpc::submit_extrinsic_with_order;
 use mc_transaction_pool::decryptor::Decryptor;
 use mc_transaction_pool::EncryptedTransactionPool;
 use mp_starknet::execution::types::Felt252Wrapper;
-use mp_starknet::transaction::types::{EncryptedInvokeTransaction, Transaction as MPTransaction, TxType};
+use mp_starknet::transaction::types::{EncryptedInvokeTransaction, InvokeTransaction, Transaction as MPTransaction, TxType};
 use pallet_starknet::runtime_api::{ConvertTransactionRuntimeApi, StarknetRuntimeApi};
 use prometheus_endpoint::Registry as PrometheusRegistry;
 use sc_block_builder::{BlockBuilderApi, BlockBuilderProvider};
@@ -407,6 +407,11 @@ where
             lock.is_enabled()
         };
 
+        let using_external_decryptor = {
+            let lock = epool.lock().await;
+            lock.is_using_external_decryptor()
+        };
+
         let closed = {
             let mut lock = epool.lock().await;
             let exist = lock.exist(block_height);
@@ -510,9 +515,16 @@ where
                             }
 
                             let decryptor = Decryptor::new();
-                            let invoke_tx = decryptor
-                                .decrypt_encrypted_invoke_transaction(encrypted_invoke_transaction, None)
-                                .await;
+                            let invoke_tx: InvokeTransaction = if using_external_decryptor {
+                                decryptor
+                                    .delegate_to_decrypt_encrypted_invoke_transaction(
+                                        encrypted_invoke_transaction,
+                                        None,
+                                    )
+                                    .await
+                            } else {
+                                decryptor.decrypt_encrypted_invoke_transaction(encrypted_invoke_transaction, None).await
+                            };
                             // println!("decrypt done on block_height {} order {}", block_height, order);
 
                             {
