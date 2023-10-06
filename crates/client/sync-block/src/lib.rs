@@ -1,6 +1,6 @@
+use std::env;
 use std::path::Path;
 use std::time::Instant;
-use std::{env, thread, time};
 
 use base64::engine::general_purpose;
 use base64::Engine as _;
@@ -11,7 +11,6 @@ use lazy_static::lazy_static;
 use rocksdb::{Error, IteratorMode, DB};
 use serde_json::{json, Value};
 use tokio;
-use tokio::runtime::Runtime;
 use tokio::time::{sleep, Duration};
 
 // Import Lazy from the lazy_static crate
@@ -307,8 +306,8 @@ pub async fn sync_with_da() {
                     Err(err) => {
                         da_failed = true;
                         start_time = Instant::now();
-                        eprintln!("Failed to submit to DA with error: {:?}, trying to retrieve", err);
                         previous_block_height = SYNC_DB.read("synced_da_block_height".to_string()).parse().unwrap();
+                        eprintln!("Failed to submit to DA with error: {:?}, trying to retrieve", err);
                     }
                 }
             } else {
@@ -344,6 +343,8 @@ mod tests {
 
     #[test]
     fn submission_to_da() {
+        use tokio::runtime::Runtime;
+
         // Create the runtime
         let rt = match Runtime::new() {
             Ok(rt) => {
