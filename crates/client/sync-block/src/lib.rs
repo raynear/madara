@@ -1,6 +1,6 @@
+use std::env;
 use std::path::Path;
 use std::time::Instant;
-use std::{env, thread, time};
 
 use base64::engine::general_purpose;
 use base64::Engine as _;
@@ -11,7 +11,6 @@ use lazy_static::lazy_static;
 use rocksdb::{Error, IteratorMode, DB};
 use serde_json::{json, Value};
 use tokio;
-use tokio::runtime::Runtime;
 use tokio::time::{sleep, Duration};
 
 // Import Lazy from the lazy_static crate
@@ -280,8 +279,9 @@ pub async fn sync_with_da() {
         @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     "
     );
-
-    let mut try_retrieve_from_da = false;
+    let mut da_failed = false;
+    let mut start_time = Instant::now();
+    let mut previous_block_height: u64 = 0;
     loop {
         sleep(Duration::from_millis(3000)).await;
         let sync = SYNC_DB.read("sync".to_string());
@@ -290,49 +290,40 @@ pub async fn sync_with_da() {
         println!("sync_target: {:?} and sync {:?}", sync_target, sync);
         if sync_target != sync {
             SYNC_DB.display_all();
-            let (next_sync, next_txs) = SYNC_DB.get_next_entry(sync.clone());
-            let block_height = submit_to_da(next_txs).await;
-            match block_height {
-                Ok(block_height) => {
-                    println!(
-                        "<------------------------------------DA BLOCK \
-                         HEIGHT------------------------------------------>: {}",
-                        block_height
-                    );
-                    SYNC_DB.write("sync".to_string(), next_sync.clone());
-                    SYNC_DB.write("synced_da_block_height".to_string(), block_height);
+            let (next_sync, next_txs) = SYNC_DB.get_next_entry(sync);
+            if !da_failed {
+                let block_height = submit_to_da(next_txs).await;
+                match block_height {
+                    Ok(block_height) => {
+                        println!(
+                            "<------------------------------------DA BLOCK \
+                             HEIGHT------------------------------------------>: {}",
+                            block_height
+                        );
+                        SYNC_DB.write("sync".to_string(), next_sync);
+                        SYNC_DB.write("synced_da_block_height".to_string(), block_height);
+                    }
+                    Err(err) => {
+                        da_failed = true;
+                        start_time = Instant::now();
+                        previous_block_height = SYNC_DB.read("synced_da_block_height".to_string()).parse().unwrap();
+                        eprintln!("Failed to submit to DA with error: {:?}, trying to retrieve", err);
+                    }
                 }
-                Err(err) => {
-                    eprintln!("Failed to submit to DA with error: {:?}, trying to retrieve", err);
-                    try_retrieve_from_da = true;
-                }
-            }
-        }
-        if try_retrieve_from_da {
-            let (next_sync, _) = SYNC_DB.get_next_entry(sync);
-            let mut previous_block_height: u64 = SYNC_DB.read("synced_da_block_height".to_string()).parse().unwrap();
-            let start_time = Instant::now();
-            loop {
-                sleep(Duration::from_millis(5000)).await;
+            } else {
                 previous_block_height += 1;
                 let retrieved_from_da = retrieve_from_da(previous_block_height.to_string()).await;
                 match retrieved_from_da {
                     Ok(_) => {
                         SYNC_DB.write("synced_da_block_height".to_string(), previous_block_height.to_string());
-                        SYNC_DB.write("sync".to_string(), next_sync.clone());
-
-                        try_retrieve_from_da = false;
-                        break;
+                        SYNC_DB.write("sync".to_string(), next_sync);
+                        da_failed = false;
                     }
                     Err(err) => {
                         if start_time.elapsed().as_secs() > 24 * 60 * 60 {
                             panic!("Total time exceeded 24 hours");
                         };
-                        eprintln!(
-                            "Failed to retrieve: {:?}, incrementing the
-                                block_height",
-                            err
-                        );
+                        eprintln!("Failed to retrieve: {:?}, incrementing the block_height", err);
                     }
                 }
             }
@@ -352,6 +343,8 @@ mod tests {
 
     #[test]
     fn submission_to_da() {
+        use tokio::runtime::Runtime;
+
         // Create the runtime
         let rt = match Runtime::new() {
             Ok(rt) => {
