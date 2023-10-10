@@ -1,18 +1,16 @@
 use std::collections::HashMap;
 
 use config::Config;
+use config::File;
+use config::Environment;
 
 use lazy_static::lazy_static;
 
 lazy_static! {
     pub static ref DA_CONFIG: HashMap<String, String> = {
-        println!("{:?}",std::env::current_dir());
         let config = Config::builder()
-        // Add in `./Settings.toml`
-        .add_source(config::File::with_name("/Users/abcdefgh/Desktop/radius/madara/Config.toml"))
-        // Add in settings from the environment (with a prefix of APP)
-        // Eg.. `APP_DEBUG=1 ./target/app` would set the `debug` key
-        .add_source(config::Environment::with_prefix("DA"))
+        .add_source(File::with_name("../../Config.toml"))
+        .add_source(Environment::with_prefix("da"))
         .build()
         .unwrap();
         
@@ -20,5 +18,4 @@ lazy_static! {
 
         da_config
     };
-    // Print out our settings (as a HashMap)
 }

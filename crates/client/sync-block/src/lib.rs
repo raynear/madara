@@ -147,9 +147,9 @@ fn encode_data_to_base64(original: String) -> String {
 }
 
 async fn submit_to_da(data: String) -> Result<String, Box<dyn std::error::Error>> {
-    let da_host = DA_CONFIG.get("da_host").unwrap();
-    let da_namespace =  DA_CONFIG.get("da_namespace").unwrap();
-    let da_auth_token =  DA_CONFIG.get("da_auth_token").unwrap();
+    let da_host = DA_CONFIG.get("host").unwrap();
+    let da_namespace =  DA_CONFIG.get("namespace").unwrap();
+    let da_auth_token =  DA_CONFIG.get("auth_token").unwrap();
     let da_auth = format!("Bearer {}", da_auth_token);
 
     let encoded_data = encode_data_to_base64(data);
@@ -197,9 +197,9 @@ async fn submit_to_da(data: String) -> Result<String, Box<dyn std::error::Error>
 }
 
 async fn retrieve_from_da(data: String) -> Result<String, Box<dyn std::error::Error>> {
-    let da_host = DA_CONFIG.get("da_host").unwrap();
-    let da_namespace =  DA_CONFIG.get("da_namespace").unwrap();
-    let da_auth_token =  DA_CONFIG.get("da_auth_token").unwrap();
+    let da_host = DA_CONFIG.get("host").unwrap();
+    let da_namespace =  DA_CONFIG.get("namespace").unwrap();
+    let da_auth_token =  DA_CONFIG.get("auth_token").unwrap();
     let da_auth = format!("Bearer {}", da_auth_token);
 
     let block_height: u64 = data.parse().unwrap();
