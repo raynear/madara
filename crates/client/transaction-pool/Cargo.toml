@@ -34,3 +34,17 @@ sp-runtime = { workspace = true }
 sp-tracing = { workspace = true }
 sp-transaction-pool = { workspace = true }
 thiserror = { workspace = true }
+
+mp-starknet = { workspace = true }
+
+serde_json = { workspace = true, default-features = true }
+encryptor = { workspace = true }
+vdf = { workspace = true }
+starknet-crypto = { workspace = true, default-features = false, features = [
+  "alloc",
+] }
+tokio = { workspace = true }
+
+mc-sync-block = { workspace = true }
+bincode = { workspace = true }
+jsonrpsee = { version = "0.20", features = ["server", "http-client", "ws-client", "macros", "client-ws-transport-native-tls"] }

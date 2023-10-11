@@ -23,6 +23,7 @@ members = [
   "crates/client/storage",
   "crates/client/transaction-pool",
   "starknet-rpc-test",
+  "crates/client/sync-block",
 ]
 
 [profile.release]
@@ -134,6 +135,9 @@ mp-commitments = { path = "crates/primitives/commitments", default-features = fa
 mp-chain-id = { path = "crates/primitives/chain-id", default-features = false }
 
 # Madara client
+
+mc-data-availability = { path = "crates/client/data-availability" }
+
 mc-mapping-sync = { path = "crates/client/mapping-sync" }
 mc-db = { path = "crates/client/db" }
 mc-storage = { path = "crates/client/storage" }
@@ -141,8 +145,7 @@ mc-rpc = { path = "crates/client/rpc" }
 mc-rpc-core = { path = "crates/client/rpc-core" }
 mc-block-proposer = { path = "crates/client/block-proposer" }
 mc-transaction-pool = { path = "crates/client/transaction-pool" }
-mc-data-availability = { path = "crates/client/data-availability" }
-
+mc-sync-block = { path = "crates/client/sync-block" }
 # Madara runtime
 madara-runtime = { path = "crates/runtime" }
 
@@ -174,6 +177,8 @@ cairo-lang-casm-contract-class = { git = "https://github.com/keep-starknet-stran
 cairo-lang-casm = { git = "https://github.com/keep-starknet-strange/cairo.git", branch = "no_std-support-8bbf530", default-features = false }
 cairo-lang-utils = { git = "https://github.com/keep-starknet-strange/cairo.git", branch = "no_std-support-8bbf530", default-features = false }
 
+
+num-bigint = "0.4.4"
 # Other third party dependencies
 anyhow = "1.0.75"
 flate2 = "1.0.27"
@@ -204,5 +209,11 @@ parking_lot = "0.12.1"
 async-trait = "0.1.73"
 indexmap = { git = "https://github.com/bluss/indexmap", rev = "ca5f848e10c31e80aeaad0720d14aa2f6dd6cfb1", default-features = false }
 num-traits = "0.2.16"
-num-bigint = "0.4.4"
 phf = { version = "0.11", default-features = false }
+encryptor = { git = "https://github.com/radiusxyz/encryptor" }
+vdf = { git = "https://github.com/radiusxyz/vdf" }
+tokio = "1.30.0"
+base64 = "0.21.2"
+bincode = "1.3.3"
+dotenv = "0.15"
+hyper = "0.14.27"
